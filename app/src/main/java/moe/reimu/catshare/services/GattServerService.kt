@@ -198,11 +198,18 @@ class GattServerService : Service() {
         }
 
         try {
-            startForeground(
-                NotificationUtils.GATT_SERVER_FG_ID,
-                createNotification(),
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
-            )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NotificationUtils.GATT_SERVER_FG_ID,
+                    createNotification(),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+                )
+            } else {
+                startForeground(
+                    NotificationUtils.GATT_SERVER_FG_ID,
+                    createNotification()
+                )
+            }
         } catch (e: Exception) {
             if (Build.VERSION.SDK_INT >= 31 && e is ForegroundServiceStartNotAllowedException) {
                 Log.e(TAG, "Service startup not allowed", e)
