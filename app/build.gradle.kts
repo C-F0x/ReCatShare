@@ -3,7 +3,6 @@ import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.kotlin.parcelize)
@@ -11,12 +10,12 @@ plugins {
 
 android {
     namespace = "moe.reimu.catshare"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "moe.reimu.catshare"
         minSdk = 29
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 7
         versionName = "1.6"
     }
@@ -67,15 +66,11 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
-    kotlin {
-        compilerOptions {
-            jvmTarget = JvmTarget.JVM_11
-        }
-    }
     buildFeatures {
         compose = true
         aidl = true
         buildConfig = true
+        resValues = true
     }
 
     packaging {
@@ -83,6 +78,12 @@ android {
             excludes += "META-INF/INDEX.LIST"
             excludes += "META-INF/*.properties"
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = JvmTarget.JVM_11
     }
 }
 
@@ -95,9 +96,10 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.androidx.compose.material.icons.extended)
 
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-    implementation("no.nordicsemi.android.kotlin.ble:client:1.1.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("no.nordicsemi.android.kotlin.ble:client:1.3.1")
 
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)
