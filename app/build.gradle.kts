@@ -14,7 +14,7 @@ android {
 
     defaultConfig {
         applicationId = "moe.reimu.catshare"
-        minSdk = 29
+        minSdk = 28
         targetSdk = 36
         versionCode = 7
         versionName = "1.6"
