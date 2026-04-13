@@ -321,8 +321,7 @@ fun MainActivityContent() {
                                 )
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text(
-                                        text = if (autoShutdownMode == 1) "剩余时间" else "剩余次数",
-                                        style = MaterialTheme.typography.labelMedium,
+                                        text = if (autoShutdownMode == 1) stringResource(R.string.time_remaining) else stringResource(R.string.count_remaining),                                        style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     Text(

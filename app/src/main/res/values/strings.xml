@@ -74,4 +74,7 @@
     <string name="auto_shutdown_minutes_label">Estimated Shut Time</string>
     <string name="auto_shutdown_count_label">Estimated Receptions Limit</string>
     <string name="auto_shutdown_count_unit">Times</string>
+    <string name="time_remaining">Time Remaining</string>
+    <string name="count_remaining">Count Remaining</string>
+    <string name="eta">ETA</string>
 </resources>

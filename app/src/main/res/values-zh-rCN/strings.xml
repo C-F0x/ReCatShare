@@ -71,4 +71,7 @@
     <string name="auto_shutdown_minutes_label">关闭前等待时间</string>
     <string name="auto_shutdown_count_label">接收次数上限</string>
     <string name="auto_shutdown_count_unit">次</string>
+    <string name="time_remaining">剩余时间</string>
+    <string name="count_remaining">剩余次数</string>
+    <string name="eta">剩余</string>
 </resources>

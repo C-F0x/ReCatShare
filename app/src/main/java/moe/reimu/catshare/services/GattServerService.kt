@@ -29,7 +29,6 @@ import android.os.Looper
 import android.os.ParcelUuid
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import moe.reimu.catshare.AppSettings
 import moe.reimu.catshare.BleSecurity
@@ -95,7 +94,13 @@ class GattServerService : Service() {
                 progressText = "${max(0, total - receiveCount)} 次"
             }
         }
+
         sendBroadcast(ServiceState.getUpdateIntent(true, progress, progressText))
+        val nm = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
+        nm.notify(
+            NotificationUtils.GATT_SERVER_FG_ID,
+            createNotification(progressText.ifEmpty { null })
+        )
     }
 
     private val internalReceiver = object : BroadcastReceiver() {
@@ -284,18 +289,25 @@ class GattServerService : Service() {
         }
     }
 
-    private fun createNotification(): Notification {
+    private fun createNotification(etaText: String? = null): Notification {
         val pi = PendingIntent.getBroadcast(
-            this,
-            0,
-            ServiceState.getStopIntent(),
-            PendingIntent.FLAG_IMMUTABLE
+            this, 0, ServiceState.getStopIntent(), PendingIntent.FLAG_IMMUTABLE
         )
+
+        val settings = AppSettings(this)
+        val contentText = when {
+            etaText != null && settings.autoShutdownMode == 1 ->
+                "${getString(R.string.discoverable_desc)}  •  ${getString(R.string.eta)}: $etaText"
+            etaText != null && settings.autoShutdownMode == 2 ->
+                "${getString(R.string.discoverable_desc)}  •  ${getString(R.string.eta)}: $etaText"
+            else ->
+                getString(R.string.discoverable_desc)
+        }
 
         return NotificationCompat.Builder(this, NotificationUtils.RECEIVER_FG_CHAN_ID)
             .setSmallIcon(R.drawable.ic_bluetooth_searching)
             .setContentTitle(getString(R.string.noti_receiver_title))
-            .setContentText(getString(R.string.discoverable_desc))
+            .setContentText(contentText)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .addAction(R.drawable.ic_close, getString(R.string.stop), pi)
             .build()
