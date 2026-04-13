@@ -23,7 +23,9 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.ParcelUuid
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -59,6 +61,9 @@ class GattServerService : Service() {
         0, BleSecurity.getEncodedPublicKey(), "02:00:00:00:00:00", BuildConfig.VERSION_CODE
     )
     private var localDeviceStatusBytes = Json.encodeToString(localDeviceInfo).toByteArray()
+
+    private val shutdownHandler = Handler(Looper.getMainLooper())
+    private var receiveCount = 0
 
     private val internalReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -172,6 +177,16 @@ class GattServerService : Service() {
                 )
             }
             startService(P2pReceiverService.getIntent(this@GattServerService, p2pInfo))
+
+            val settings = AppSettings(this@GattServerService)
+            if (settings.autoShutdownMode == 2) {
+                receiveCount++
+                Log.i(TAG, "Receive count: $receiveCount / ${settings.autoShutdownCount}")
+                if (receiveCount >= settings.autoShutdownCount) {
+                    Log.i(TAG, "Auto shutdown: receive count reached, stopping")
+                    shutdownHandler.post { stopSelf() }
+                }
+            }
         }
     }
 
@@ -227,6 +242,16 @@ class GattServerService : Service() {
         })
         internalReceiverRegistered = true
         sendBroadcast(ServiceState.getUpdateIntent(true))
+
+        val settings = AppSettings(this)
+        if (settings.autoShutdownMode == 1) {
+            val delay = settings.autoShutdownMinutes * 60 * 1000L
+            Log.i(TAG, "Auto shutdown: scheduled in ${settings.autoShutdownMinutes} min")
+            shutdownHandler.postDelayed({
+                Log.i(TAG, "Auto shutdown: timer fired, stopping")
+                stopSelf()
+            }, delay)
+        }
     }
 
     private fun createNotification(): Notification {
@@ -280,7 +305,6 @@ class GattServerService : Service() {
                 var str = String(nameBytes.copyOf(15), Charsets.UTF_8)
                 var length = str.length - 1
 
-                // Scan backwards for char boundary
                 while (length >= 0 && !name.startsWith(str)) {
                     str = str.substring(0, length)
                     length -= 1
@@ -333,6 +357,9 @@ class GattServerService : Service() {
     @SuppressLint("MissingPermission")
     override fun onDestroy() {
         super.onDestroy()
+
+        shutdownHandler.removeCallbacksAndMessages(null)
+
         if (internalReceiverRegistered) {
             unregisterReceiver(internalReceiver)
         }

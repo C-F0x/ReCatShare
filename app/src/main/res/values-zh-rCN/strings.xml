@@ -64,4 +64,11 @@
     <string name="cancelled_by_user_remote">传输已被对端设备取消</string>
     <string name="wifi_disabled">WiFi 已关闭或不可用</string>
     <string name="auto_accept_name">自动接收</string>
+    <string name="auto_shutdown_name">自动关闭接收</string>
+    <string name="auto_shutdown_off">关闭</string>
+    <string name="auto_shutdown_timed">计时</string>
+    <string name="auto_shutdown_count">计次</string>
+    <string name="auto_shutdown_minutes_label">关闭前等待时间</string>
+    <string name="auto_shutdown_count_label">接收次数上限</string>
+    <string name="auto_shutdown_count_unit">次</string>
 </resources>

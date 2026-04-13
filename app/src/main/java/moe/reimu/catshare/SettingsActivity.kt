@@ -19,9 +19,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -32,6 +34,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -39,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import moe.reimu.catshare.ui.DefaultCard
@@ -64,34 +68,29 @@ fun SettingsActivityContent() {
     val context = LocalContext.current
     val settings = remember(activity) { AppSettings(context) }
 
-    var deviceNameValue by remember {
-        mutableStateOf(settings.deviceName)
-    }
-
-    var verboseValue by remember {
-        mutableStateOf(settings.verbose)
-    }
-
-    var autoAcceptValue by remember {
-        mutableStateOf(settings.autoAccept)
-    }
+    var deviceNameValue by remember { mutableStateOf(settings.deviceName) }
+    var verboseValue by remember { mutableStateOf(settings.verbose) }
+    var autoAcceptValue by remember { mutableStateOf(settings.autoAccept) }
+    var autoShutdownModeValue by remember { mutableIntStateOf(settings.autoShutdownMode) }
+    var autoShutdownMinutesValue by remember { mutableStateOf(settings.autoShutdownMinutes.toString()) }
+    var autoShutdownCountValue by remember { mutableStateOf(settings.autoShutdownCount.toString()) }
 
     Scaffold(topBar = {
         TopAppBar(
             title = { Text(text = stringResource(R.string.title_activity_settings)) },
             actions = {
                 IconButton(onClick = {
-                    val nameValue = deviceNameValue
-                    if (nameValue.isNotBlank()) {
-                        settings.deviceName = nameValue
+                    if (deviceNameValue.isNotBlank()) {
+                        settings.deviceName = deviceNameValue
                     }
                     settings.verbose = verboseValue
-
+                    settings.autoAccept = autoAcceptValue
+                    settings.autoShutdownMode = autoShutdownModeValue
+                    autoShutdownMinutesValue.toIntOrNull()?.let { if (it > 0) settings.autoShutdownMinutes = it }
+                    autoShutdownCountValue.toIntOrNull()?.let { if (it > 0) settings.autoShutdownCount = it }
                     activity?.finish()
                 }) {
-                    Icon(
-                        imageVector = Icons.Outlined.Check, contentDescription = "Save"
-                    )
+                    Icon(imageVector = Icons.Outlined.Check, contentDescription = "Save")
                 }
             })
     }) { innerPadding ->
@@ -126,9 +125,7 @@ fun SettingsActivityContent() {
                             style = MaterialTheme.typography.titleMedium,
                         )
                         Spacer(modifier = Modifier.weight(1.0f))
-                        Switch(checked = verboseValue, onCheckedChange = {
-                            verboseValue = it
-                        })
+                        Switch(checked = verboseValue, onCheckedChange = { verboseValue = it })
                     }
                 }
             }
@@ -143,9 +140,57 @@ fun SettingsActivityContent() {
                             style = MaterialTheme.typography.titleMedium,
                         )
                         Spacer(modifier = Modifier.weight(1.0f))
-                        Switch(checked = autoAcceptValue, onCheckedChange = {
-                            autoAcceptValue = it
-                        })
+                        Switch(checked = autoAcceptValue, onCheckedChange = { autoAcceptValue = it })
+                    }
+                }
+            }
+            item {
+                DefaultCard {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.auto_shutdown_name),
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(
+                                selected = autoShutdownModeValue == 0,
+                                onClick = { autoShutdownModeValue = 0 },
+                                label = { Text(stringResource(R.string.auto_shutdown_off)) }
+                            )
+                            FilterChip(
+                                selected = autoShutdownModeValue == 1,
+                                onClick = { autoShutdownModeValue = 1 },
+                                label = { Text(stringResource(R.string.auto_shutdown_timed)) }
+                            )
+                            FilterChip(
+                                selected = autoShutdownModeValue == 2,
+                                onClick = { autoShutdownModeValue = 2 },
+                                label = { Text(stringResource(R.string.auto_shutdown_count)) }
+                            )
+                        }
+                        if (autoShutdownModeValue == 1) {
+                            OutlinedTextField(
+                                value = autoShutdownMinutesValue,
+                                onValueChange = { autoShutdownMinutesValue = it.filter { c -> c.isDigit() } },
+                                label = { Text(stringResource(R.string.auto_shutdown_minutes_label)) },
+                                suffix = { Text("min") },
+                                modifier = Modifier.fillMaxWidth(),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                            )
+                        }
+                        if (autoShutdownModeValue == 2) {
+                            OutlinedTextField(
+                                value = autoShutdownCountValue,
+                                onValueChange = { autoShutdownCountValue = it.filter { c -> c.isDigit() } },
+                                label = { Text(stringResource(R.string.auto_shutdown_count_label)) },
+                                suffix = { Text(stringResource(R.string.auto_shutdown_count_unit)) },
+                                modifier = Modifier.fillMaxWidth(),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                            )
+                        }
                     }
                 }
             }
@@ -197,9 +242,7 @@ fun SettingsActivityContent() {
                                 text = stringResource(R.string.capture_logs),
                                 style = MaterialTheme.typography.titleMedium,
                             )
-                            Text(
-                                text = stringResource(R.string.capture_logs_desc),
-                            )
+                            Text(text = stringResource(R.string.capture_logs_desc))
                         }
                     }
                 }

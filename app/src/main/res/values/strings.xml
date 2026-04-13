@@ -67,4 +67,11 @@
     <string name="cancelled_by_user_remote">Transmission has been cancelled by remote device</string>
     <string name="wifi_disabled">WiFi is disabled or unavailable</string>
     <string name="auto_accept_name">Automatic Accept</string>
+    <string name="auto_shutdown_name">Automatic Shutdown</string>
+    <string name="auto_shutdown_off">Shutdown</string>
+    <string name="auto_shutdown_timed">Timer</string>
+    <string name="auto_shutdown_count">Counter</string>
+    <string name="auto_shutdown_minutes_label">Estimated Shut Time</string>
+    <string name="auto_shutdown_count_label">Estimated Receptions Limit</string>
+    <string name="auto_shutdown_count_unit">Times</string>
 </resources>

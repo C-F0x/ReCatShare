@@ -10,8 +10,7 @@ class AppSettings(private val context: Context) {
 
     var deviceName: String
         get() = prefs.getString("deviceName", null)
-            ?: DeviceName.get().takeUnless { it.isBlank() }
-            ?: context.getString(R.string.device_name_default_value)
+            ?: DeviceName.get()
         set(value) {
             prefs.edit { putString("deviceName", value) }
         }
@@ -26,5 +25,23 @@ class AppSettings(private val context: Context) {
         get() = prefs.getBoolean("autoAccept", false)
         set(value) {
             prefs.edit { putBoolean("autoAccept", value) }
+        }
+
+    var autoShutdownMode: Int
+        get() = prefs.getInt("autoShutdownMode", 0)
+        set(value) {
+            prefs.edit { putInt("autoShutdownMode", value) }
+        }
+
+    var autoShutdownMinutes: Int
+        get() = prefs.getInt("autoShutdownMinutes", 30)
+        set(value) {
+            prefs.edit { putInt("autoShutdownMinutes", value) }
+        }
+
+    var autoShutdownCount: Int
+        get() = prefs.getInt("autoShutdownCount", 10)
+        set(value) {
+            prefs.edit { putInt("autoShutdownCount", value) }
         }
 }
