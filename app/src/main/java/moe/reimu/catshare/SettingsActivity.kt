@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import moe.reimu.catshare.ui.DefaultCard
 import moe.reimu.catshare.ui.theme.CatShareTheme
+import moe.reimu.catshare.utils.ServiceState
 import java.io.File
 
 class SettingsActivity : ComponentActivity() {
@@ -71,6 +72,7 @@ fun SettingsActivityContent() {
     var deviceNameValue by remember { mutableStateOf(settings.deviceName) }
     var verboseValue by remember { mutableStateOf(settings.verbose) }
     var autoAcceptValue by remember { mutableStateOf(settings.autoAccept) }
+    val originalShutdownMode = remember { settings.autoShutdownMode }
     var autoShutdownModeValue by remember { mutableIntStateOf(settings.autoShutdownMode) }
     var autoShutdownMinutesValue by remember { mutableStateOf(settings.autoShutdownMinutes.toString()) }
     var autoShutdownCountValue by remember { mutableStateOf(settings.autoShutdownCount.toString()) }
@@ -88,6 +90,11 @@ fun SettingsActivityContent() {
                     settings.autoShutdownMode = autoShutdownModeValue
                     autoShutdownMinutesValue.toIntOrNull()?.let { if (it > 0) settings.autoShutdownMinutes = it }
                     autoShutdownCountValue.toIntOrNull()?.let { if (it > 0) settings.autoShutdownCount = it }
+
+                    if (autoShutdownModeValue != originalShutdownMode) {
+                        context.sendBroadcast(ServiceState.getStopIntent())
+                    }
+
                     activity?.finish()
                 }) {
                     Icon(imageVector = Icons.Outlined.Check, contentDescription = "Save")
