@@ -10,18 +10,24 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import android.view.ContextThemeWrapper
 import android.widget.Toast
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.launch
+import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -40,17 +46,25 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import com.google.android.material.progressindicator.CircularProgressIndicator
 import moe.reimu.catshare.services.GattServerService
 import moe.reimu.catshare.ui.DefaultCard
 import moe.reimu.catshare.ui.theme.CatShareTheme
@@ -58,9 +72,8 @@ import moe.reimu.catshare.utils.ServiceState
 import moe.reimu.catshare.utils.TAG
 import moe.reimu.catshare.utils.registerInternalBroadcastReceiver
 import rikka.shizuku.Shizuku
-import java.util.ArrayList
 
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -138,14 +151,32 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MainActivityContent() {
     var checked by remember { mutableStateOf(false) }
-    val listState = rememberLazyListState()
+    var currentProgress by remember { mutableFloatStateOf(0f) }
+    var progressText by remember { mutableStateOf("") }
 
+    val listState = rememberLazyListState()
     val context = LocalContext.current
+    val settings = remember { AppSettings(context) }
+    var autoShutdownMode by remember { mutableIntStateOf(settings.autoShutdownMode) }
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                autoShutdownMode = settings.autoShutdownMode
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     DisposableEffect(context) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
                 if (intent.action == ServiceState.ACTION_UPDATE_RECEIVER_STATE) {
                     checked = intent.getBooleanExtra("isRunning", false)
+                    currentProgress = intent.getFloatExtra("progress", 0f)
+                    progressText = intent.getStringExtra("progressText") ?: ""
                 }
             }
         }
@@ -165,13 +196,8 @@ fun MainActivityContent() {
         context.checkSelfPermission("android.permission.LOCAL_MAC_ADDRESS") == PackageManager.PERMISSION_GRANTED
     }
 
-    var shizukuGranted by remember {
-        mutableStateOf(false)
-    }
-
-    var shizukuAvailable by remember {
-        mutableStateOf(false)
-    }
+    var shizukuGranted by remember { mutableStateOf(false) }
+    var shizukuAvailable by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
         val permissionListener = Shizuku.OnRequestPermissionResultListener { _, grantResult ->
@@ -245,8 +271,8 @@ fun MainActivityContent() {
                         }
                     }
                 }
-
             }
+
             item {
                 DefaultCard {
                     Row(
@@ -270,6 +296,43 @@ fun MainActivityContent() {
                                 GattServerService.stop(context)
                             }
                         }, modifier = Modifier.padding(start = 8.dp))
+                    }
+                }
+            }
+
+            item {
+                AnimatedVisibility(
+                    visible = checked && autoShutdownMode > 0,
+                    enter = expandVertically(),
+                    exit = shrinkVertically()
+                ) {
+                    DefaultCard {
+                        Row(
+                            modifier = Modifier
+                                .padding(16.dp)
+                                .fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                WavyProgressRing(
+                                    progress = currentProgress,
+                                    modifier = Modifier.size(140.dp)
+                                )
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        text = if (autoShutdownMode == 1) "剩余时间" else "剩余次数",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = progressText.ifEmpty { "..." },
+                                        style = MaterialTheme.typography.titleLarge,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -323,7 +386,6 @@ fun MainActivityContent() {
     }
 }
 
-
 class ChooseFilesContract : ActivityResultContract<Void?, List<Uri>>() {
     override fun createIntent(context: Context, input: Void?): Intent {
         val cf = Intent(Intent.ACTION_GET_CONTENT)
@@ -336,29 +398,20 @@ class ChooseFilesContract : ActivityResultContract<Void?, List<Uri>>() {
     override fun getSynchronousResult(
         context: Context,
         input: Void?
-    ): SynchronousResult<List<Uri>>? =
-        null
+    ): SynchronousResult<List<Uri>>? = null
 
     override fun parseResult(resultCode: Int, intent: Intent?): List<Uri> {
-        if (intent == null) {
-            return emptyList()
-        }
+        if (intent == null) return emptyList()
 
         val ret = mutableListOf<Uri>()
-
         val clipData = intent.clipData
         if (clipData != null) {
             for (i in 0..<clipData.itemCount) {
-                clipData.getItemAt(i).uri?.let {
-                    ret.add(it)
-                }
+                clipData.getItemAt(i).uri?.let { ret.add(it) }
             }
         } else {
-            intent.data?.let {
-                ret.add(it)
-            }
+            intent.data?.let { ret.add(it) }
         }
-
         return ret
     }
 }
@@ -372,4 +425,44 @@ fun MyIcon(imageVector: ImageVector) {
             .size(48.dp)
             .padding(end = 16.dp),
     )
+}
+
+@Composable
+fun WavyProgressRing(
+    progress: Float,
+    modifier: Modifier = Modifier
+) {
+    val consumedColor   = MaterialTheme.colorScheme.primary
+    val unconsumedColor = MaterialTheme.colorScheme.primaryContainer
+
+    val consumedArgb   = consumedColor.toArgb()
+    val unconsumedArgb = unconsumedColor.toArgb()
+
+    BoxWithConstraints(modifier = modifier) {
+        val density = LocalDensity.current
+        val sizePx   = with(density) { minOf(maxWidth, maxHeight).toPx() }.toInt()
+        val strokePx = with(density) { 4.dp.toPx() }.toInt()
+
+        AndroidView(
+            factory = { context ->
+                val themedContext = ContextThemeWrapper(
+                    context,
+                    com.google.android.material.R.style.Widget_Material3Expressive_CircularProgressIndicator_Wavy
+                )
+                CircularProgressIndicator(themedContext).apply {
+                    isIndeterminate = false
+                    max = 10_000
+                    indicatorSize  = sizePx
+                    trackThickness = strokePx
+                }
+            },
+            update = { view ->
+                view.indicatorSize  = sizePx
+                view.trackThickness = strokePx
+                view.setIndicatorColor(consumedArgb)
+                view.setTrackColor(unconsumedArgb)
+                view.setProgressCompat((progress * 10_000).toInt(), true)
+            }
+        )
+    }
 }

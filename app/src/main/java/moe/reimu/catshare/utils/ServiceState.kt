@@ -9,8 +9,15 @@ object ServiceState {
     const val ACTION_STOP_SERVICE = "${BuildConfig.APPLICATION_ID}.STOP_SERVICE"
 
     fun getQueryIntent() = Intent(ACTION_QUERY_RECEIVER_STATE)
-    fun getUpdateIntent(isRunning: Boolean) = Intent(ACTION_UPDATE_RECEIVER_STATE).apply {
+    
+    fun getUpdateIntent(
+        isRunning: Boolean,
+        progress: Float = 0f,
+        progressText: String = ""
+    ) = Intent(ACTION_UPDATE_RECEIVER_STATE).apply {
         putExtra("isRunning", isRunning)
+        putExtra("progress", progress)
+        putExtra("progressText", progressText)
     }
 
     fun getStopIntent() = Intent(ACTION_STOP_SERVICE)

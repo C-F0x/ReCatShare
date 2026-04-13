@@ -64,12 +64,45 @@ class GattServerService : Service() {
 
     private val shutdownHandler = Handler(Looper.getMainLooper())
     private var receiveCount = 0
+    private var startTime = 0L
+
+    private val updateTicker = object : Runnable {
+        override fun run() {
+            broadcastState()
+            shutdownHandler.postDelayed(this, 1000)
+        }
+    }
+
+    private fun broadcastState() {
+        val settings = AppSettings(this)
+        var progress = 0f
+        var progressText = ""
+
+        when (settings.autoShutdownMode) {
+            1 -> {
+                val totalMs = settings.autoShutdownMinutes * 60 * 1000L
+                val elapsedMs = System.currentTimeMillis() - startTime
+                val remainingMs = max(0L, totalMs - elapsedMs)
+                progress = (elapsedMs.toFloat() / totalMs).coerceIn(0f, 1f)
+                val remainingMin = remainingMs / 1000 / 60
+                val remainingSec = (remainingMs / 1000) % 60
+                progressText = String.format("%02d:%02d", remainingMin, remainingSec)
+                if (remainingMs <= 0) stopSelf()
+            }
+            2 -> {
+                val total = settings.autoShutdownCount
+                progress = (receiveCount.toFloat() / total).coerceIn(0f, 1f)
+                progressText = "${max(0, total - receiveCount)} 次"
+            }
+        }
+        sendBroadcast(ServiceState.getUpdateIntent(true, progress, progressText))
+    }
 
     private val internalReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
                 ServiceState.ACTION_QUERY_RECEIVER_STATE -> {
-                    context.sendBroadcast(ServiceState.getUpdateIntent(true))
+                    broadcastState()
                 }
 
                 ServiceState.ACTION_STOP_SERVICE -> {
@@ -181,10 +214,9 @@ class GattServerService : Service() {
             val settings = AppSettings(this@GattServerService)
             if (settings.autoShutdownMode == 2) {
                 receiveCount++
-                Log.i(TAG, "Receive count: $receiveCount / ${settings.autoShutdownCount}")
+                broadcastState()
                 if (receiveCount >= settings.autoShutdownCount) {
-                    Log.i(TAG, "Auto shutdown: receive count reached, stopping")
-                    shutdownHandler.post { stopSelf() }
+                    shutdownHandler.postDelayed({ stopSelf() }, 1000)
                 }
             }
         }
@@ -192,6 +224,7 @@ class GattServerService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        startTime = System.currentTimeMillis()
 
         if (!checkBluetoothPermissions()) {
             stopSelf()
@@ -245,12 +278,9 @@ class GattServerService : Service() {
 
         val settings = AppSettings(this)
         if (settings.autoShutdownMode == 1) {
-            val delay = settings.autoShutdownMinutes * 60 * 1000L
-            Log.i(TAG, "Auto shutdown: scheduled in ${settings.autoShutdownMinutes} min")
-            shutdownHandler.postDelayed({
-                Log.i(TAG, "Auto shutdown: timer fired, stopping")
-                stopSelf()
-            }, delay)
+            shutdownHandler.post(updateTicker)
+        } else {
+            broadcastState()
         }
     }
 
