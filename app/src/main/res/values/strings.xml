@@ -77,4 +77,7 @@
     <string name="time_remaining">Time Remaining</string>
     <string name="count_remaining">Count Remaining</string>
     <string name="eta">ETA</string>
+    <string name="transferring_files">Now Transferring…</string>
+    <string name="finishing">Now Finalizing…</string>
+    <string name="done">Done</string>
 </resources>

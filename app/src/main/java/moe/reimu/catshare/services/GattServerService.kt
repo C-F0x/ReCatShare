@@ -214,6 +214,17 @@ class GattServerService : Service() {
                     catShare = BuildConfig.VERSION_CODE,
                 )
             }
+
+            val liveBuilder = NotificationUtils.getLiveNotificationBuilder(
+                this@GattServerService,
+                NotificationUtils.RECEIVER_CHAN_ID,
+                moe.reimu.catshare.utils.LiveStage.PREPARING,
+                "CatShare"
+            )
+
+            val nm = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
+            nm.notify(NotificationUtils.RECEIVER_FG_ID, liveBuilder.build())
+
             startService(P2pReceiverService.getIntent(this@GattServerService, p2pInfo))
 
             val settings = AppSettings(this@GattServerService)

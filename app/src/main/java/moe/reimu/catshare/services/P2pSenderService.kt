@@ -46,14 +46,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import moe.reimu.catshare.AppSettings
 import moe.reimu.catshare.BleSecurity
 import moe.reimu.catshare.BuildConfig
-import moe.reimu.catshare.exceptions.CancelledByUserException
 import moe.reimu.catshare.MyApplication
 import moe.reimu.catshare.R
+import moe.reimu.catshare.exceptions.CancelledByUserException
 import moe.reimu.catshare.exceptions.ExceptionWithMessage
 import moe.reimu.catshare.models.DeviceInfo
 import moe.reimu.catshare.models.P2pInfo
@@ -62,6 +61,7 @@ import moe.reimu.catshare.models.WebSocketMessage
 import moe.reimu.catshare.utils.BleUtils
 import moe.reimu.catshare.utils.DeviceUtils
 import moe.reimu.catshare.utils.JsonWithUnknownKeys
+import moe.reimu.catshare.utils.LiveStage
 import moe.reimu.catshare.utils.NotificationUtils
 import moe.reimu.catshare.utils.ShizukuUtils
 import moe.reimu.catshare.utils.TAG
@@ -90,6 +90,21 @@ class P2pSenderService : BaseP2pService() {
     }
 
     override fun onBind(intent: Intent) = binder
+    private fun updateStage(taskId: Int, targetName: String, stage: LiveStage) {
+        val cancelIntent = if (stage != LiveStage.COMPLETED) {
+            PendingIntent.getBroadcast(
+                this, taskId,
+                Intent(ACTION_CANCEL_SENDING).putExtra("taskId", taskId),
+                PendingIntent.FLAG_IMMUTABLE
+            )
+        } else null
+
+        val builder = NotificationUtils.getLiveNotificationBuilder(
+            this, NotificationUtils.SENDER_CHAN_ID, stage, targetName, cancelIntent
+        )
+        updateNotification(builder.build())
+    }
+
 
     private var groupInfoFuture = CompletableDeferred<WifiP2pGroup>()
 
@@ -108,6 +123,7 @@ class P2pSenderService : BaseP2pService() {
             }
         }
     }
+
 
     override fun onCreate() {
         super.onCreate()
@@ -154,6 +170,7 @@ class P2pSenderService : BaseP2pService() {
     @SuppressLint("MissingPermission")
     suspend fun runTask(task: TaskInfo) = coroutineScope {
         val taskIdStr = task.id.toString()
+        updateStage(task.id, task.device.name, LiveStage.PREPARING) // 10%
         var totalSize = 0L
         var fileCount = 0
         var mimeType: String? = null
@@ -296,6 +313,8 @@ class P2pSenderService : BaseP2pService() {
                 get("/download") {
                     Log.i(TAG, "Got download request from ${call.request.local.remoteAddress}")
                     transferStartFuture.complete(Unit)
+
+                    updateStage(task.id, task.device.name, LiveStage.TRANSFERRING)
 
                     if (call.request.queryParameters["taskId"] != taskIdStr) {
                         call.respondText(
@@ -455,6 +474,9 @@ class P2pSenderService : BaseP2pService() {
                         "Waiting for WS connect",
                         R.string.error_send_timeout_ws
                     )
+
+                    updateStage(task.id, task.device.name, LiveStage.CONNECTING)
+
                     handshakeCompleteFuture.awaitWithTimeout(
                         Duration.ofSeconds(5),
                         "Waiting for handshake",
@@ -466,6 +488,7 @@ class P2pSenderService : BaseP2pService() {
                         R.string.error_send_timeout_handshake
                     )
                     transferCompleteFuture.await()
+                    updateStage(task.id, task.device.name, LiveStage.FINALIZING)
                     withTimeoutOrNull(5000L) {
                         statusFuture.await()
                     }
@@ -525,6 +548,8 @@ class P2pSenderService : BaseP2pService() {
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
                 )
                 runTask(task)
+                updateStage(task.id, task.device.name, LiveStage.COMPLETED)
+                delay(5000)
                 notificationManager.notify(
                     Random.nextInt(),
                     createCompletedNotification(task.device.name)

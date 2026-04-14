@@ -49,6 +49,7 @@
         android:protectionLevel="signature" />
 
     <uses-permission android:name="${applicationId}.INTERNAL_BROADCASTS" />
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
 
     <application
         android:name=".MyApplication"

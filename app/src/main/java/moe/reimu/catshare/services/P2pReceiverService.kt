@@ -30,6 +30,7 @@ import android.widget.Toast
 import androidx.annotation.DrawableRes
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.net.toUri
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.websocket.WebSockets
@@ -63,9 +64,11 @@ import moe.reimu.catshare.exceptions.ExceptionWithMessage
 import moe.reimu.catshare.models.P2pInfo
 import moe.reimu.catshare.models.ReceivedFile
 import moe.reimu.catshare.models.WebSocketMessage
+import moe.reimu.catshare.utils.LiveStage
 import moe.reimu.catshare.utils.NotificationUtils
 import moe.reimu.catshare.utils.ProgressCounter
 import moe.reimu.catshare.utils.TAG
+import moe.reimu.catshare.utils.ZipPathValidatorCallback
 import moe.reimu.catshare.utils.awaitWithTimeout
 import moe.reimu.catshare.utils.checkP2pPermissions
 import moe.reimu.catshare.utils.connectSuspend
@@ -83,11 +86,24 @@ import java.util.zip.ZipInputStream
 import javax.net.ssl.SSLContext
 import kotlin.math.min
 import kotlin.random.Random
-import androidx.core.net.toUri
-import moe.reimu.catshare.utils.ZipPathValidatorCallback
 
 class P2pReceiverService : BaseP2pService() {
     private lateinit var notificationManager: NotificationManagerCompat
+
+    private fun updateStage(taskId: Int, senderName: String, stage: LiveStage) {
+        val cancelIntent = if (stage != LiveStage.COMPLETED) {
+            PendingIntent.getBroadcast(
+                this, taskId,
+                Intent(ACTION_CANCEL_RECEIVING).apply { putExtra("taskId", taskId) },
+                PendingIntent.FLAG_IMMUTABLE
+            )
+        } else null
+
+        val builder = NotificationUtils.getLiveNotificationBuilder(
+            this, NotificationUtils.RECEIVER_CHAN_ID, stage, senderName, cancelIntent
+        )
+        updateNotification(builder.build())
+    }
 
     private val internalReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -173,6 +189,8 @@ class P2pReceiverService : BaseP2pService() {
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
                 )
                 runReceive(info, localTaskId)
+                updateStage(localTaskId, "CatShare", LiveStage.COMPLETED)
+                delay(5000)
             } catch (e: CancelledByUserException) {
                 Log.i(TAG, "Cancelled by user")
                 notificationManager.notify(
@@ -380,6 +398,7 @@ class P2pReceiverService : BaseP2pService() {
 
     @SuppressLint("MissingPermission")
     private suspend fun runReceive(p2pInfo: P2pInfo, localTaskId: Int) = coroutineScope {
+        updateStage(localTaskId, "Device", LiveStage.PREPARING)
         val client = HttpClient(OkHttp) {
             install(WebSockets)
             engine {
@@ -433,6 +452,7 @@ class P2pReceiverService : BaseP2pService() {
                         "taskId", sendRequestPayload.optString("id")
                     )
                     val senderName = sendRequestPayload.getString("senderName")
+                    updateStage(localTaskId, senderName, LiveStage.CONNECTING)
                     val fileName = sendRequestPayload.getString("fileName")
                     val totalSize = sendRequestPayload.getLong("totalSize")
                     val fileCount = sendRequestPayload.getInt("fileCount")
@@ -502,6 +522,8 @@ class P2pReceiverService : BaseP2pService() {
                     val files = client.prepareGet(downloadUrl).execute { downloadRes ->
                         val ist = downloadRes.bodyAsChannel().toInputStream()
 
+                        updateStage(localTaskId, senderName, LiveStage.TRANSFERRING)
+
                         val progress = ProgressCounter(totalSize) { total, processed ->
                             updateNotification(
                                 createProgressNotification(
@@ -512,6 +534,8 @@ class P2pReceiverService : BaseP2pService() {
                                 )
                             )
                         }
+
+                        updateStage(localTaskId, senderName, LiveStage.FINALIZING)
 
                         ZipInputStream(ist).use { zipStream ->
                             saveArchive(zipStream, progress)

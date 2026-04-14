@@ -74,4 +74,7 @@
     <string name="time_remaining">剩余时间</string>
     <string name="count_remaining">剩余次数</string>
     <string name="eta">剩余</string>
+    <string name="transferring_files">正在传输文件…</string>
+    <string name="finishing">正在收尾…</string>
+    <string name="done">完成</string>
 </resources>
