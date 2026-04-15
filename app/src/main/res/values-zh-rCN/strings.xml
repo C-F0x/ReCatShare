@@ -77,4 +77,6 @@
     <string name="transferring_files">正在传输文件…</string>
     <string name="finishing">正在收尾…</string>
     <string name="done">完成</string>
+    <string name="response_waiting">正在等待对方响应…</string>
+    <string name="auth_waiting">请在设备上确认连接…</string>
 </resources>

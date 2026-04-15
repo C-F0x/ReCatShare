@@ -80,4 +80,6 @@
     <string name="transferring_files">Now Transferring…</string>
     <string name="finishing">Now Finalizing…</string>
     <string name="done">Done</string>
+    <string name="response_waiting">Now Waiting…</string>
+    <string name="auth_waiting">Waiting for Confirm…</string>
 </resources>

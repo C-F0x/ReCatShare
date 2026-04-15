@@ -11,7 +11,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
-import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.wifi.p2p.WifiP2pConfig
 import android.net.wifi.p2p.WifiP2pGroup
@@ -90,7 +89,7 @@ import kotlin.random.Random
 class P2pReceiverService : BaseP2pService() {
     private lateinit var notificationManager: NotificationManagerCompat
 
-    private fun updateStage(taskId: Int, senderName: String, stage: LiveStage) {
+    private fun updateStage(taskId: Int, senderName: String, stage: LiveStage, progress: Int = 0) {
         val cancelIntent = if (stage != LiveStage.COMPLETED) {
             PendingIntent.getBroadcast(
                 this, taskId,
@@ -100,11 +99,18 @@ class P2pReceiverService : BaseP2pService() {
         } else null
 
         val builder = NotificationUtils.getLiveNotificationBuilder(
-            this, NotificationUtils.RECEIVER_CHAN_ID, stage, senderName, cancelIntent
+            this, NotificationUtils.RECEIVER_CHAN_ID, stage, senderName, progress, cancelIntent
         )
+
+        if (stage == LiveStage.WAITING_AUTH) {
+            val acceptIntent = PendingIntent.getBroadcast(this, taskId, Intent(ACTION_ACCEPTED).apply { putExtra("taskId", taskId) }, PendingIntent.FLAG_IMMUTABLE)
+            val dismissIntent = PendingIntent.getBroadcast(this, taskId, Intent(ACTION_DISMISSED).apply { putExtra("taskId", taskId) }, PendingIntent.FLAG_IMMUTABLE)
+            builder.addAction(R.drawable.ic_done, getString(R.string.accept), acceptIntent)
+            builder.addAction(R.drawable.ic_close, getString(R.string.reject), dismissIntent)
+        }
+
         updateNotification(builder.build())
     }
-
     private val internalReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
@@ -128,9 +134,7 @@ class P2pReceiverService : BaseP2pService() {
 
         notificationManager = NotificationManagerCompat.from(this)
 
-        registerInternalBroadcastReceiver(internalReceiver, IntentFilter().apply {
-            addAction(ACTION_CANCEL_RECEIVING)
-        })
+        registerInternalBroadcastReceiver(internalReceiver, IntentFilter(ACTION_CANCEL_RECEIVING))
         internalReceiverRegistered = true
     }
 
@@ -179,13 +183,17 @@ class P2pReceiverService : BaseP2pService() {
             return START_NOT_STICKY
         }
 
-        val info = intent.getParcelableExtra<P2pInfo>("p2p_info") ?: return START_NOT_STICKY
+        val info = intent.getParcelableExtra<P2pInfo>("p2p_info") ?: run {
+            MyApplication.getInstance().clearBusy()
+            return START_NOT_STICKY
+        }
+
         val localTaskId = Random.nextInt()
         val job = CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
             try {
                 startForeground(
                     NotificationUtils.RECEIVER_FG_ID,
-                    createPrepareNotification(getString(R.string.noti_connecting)),
+                    NotificationUtils.getLiveNotificationBuilder(this@P2pReceiverService, NotificationUtils.RECEIVER_CHAN_ID, LiveStage.INIT, "CatShare").build(),
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
                 )
                 runReceive(info, localTaskId)
@@ -206,6 +214,7 @@ class P2pReceiverService : BaseP2pService() {
             } finally {
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 MyApplication.getInstance().clearBusy()
+                stopSelf()
             }
         }
 
@@ -237,59 +246,6 @@ class P2pReceiverService : BaseP2pService() {
         return NotificationCompat.Builder(this, NotificationUtils.RECEIVER_CHAN_ID)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setSmallIcon(icon).setPriority(NotificationCompat.PRIORITY_MAX)
-    }
-
-    private fun createPrepareNotification(description: String) =
-        createNotificationBuilder(R.drawable.ic_downloading).setOngoing(true)
-            .setContentTitle(getString(R.string.preparing_transmission)).setContentText(description)
-            .build()
-
-    private fun createAskingNotification(
-        taskId: Int,
-        senderName: String,
-        fileName: String,
-        fileCount: Int,
-        totalSize: Long,
-        thumbnail: Bitmap?,
-        textContent: String?
-    ): Notification {
-        val fmtSize = Formatter.formatShortFileSize(this, totalSize)
-        val contentText = if (textContent == null) {
-            resources.getQuantityString(
-                R.plurals.noti_request_desc, fileCount, fileCount, fmtSize
-            )
-        } else {
-            resources.getString(R.string.noti_request_desc_text)
-        }
-
-        val dismissIntent = PendingIntent.getBroadcast(
-            this,
-            taskId,
-            Intent(ACTION_DISMISSED).apply { putExtra("taskId", taskId) },
-            PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val acceptIntent = PendingIntent.getBroadcast(
-            this,
-            taskId,
-            Intent(ACTION_ACCEPTED).apply { putExtra("taskId", taskId) },
-            PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val n = createNotificationBuilder(R.drawable.ic_downloading).setContentTitle(senderName)
-            .setContentText(contentText)
-            .addAction(R.drawable.ic_done, getString(R.string.accept), acceptIntent)
-            .addAction(R.drawable.ic_close, getString(R.string.reject), dismissIntent)
-            .setDeleteIntent(dismissIntent)
-
-        if (thumbnail != null) {
-            n.setStyle(NotificationCompat.BigPictureStyle().bigPicture(thumbnail))
-        }
-        if (textContent != null) {
-            n.setStyle(NotificationCompat.BigTextStyle().bigText(textContent))
-        }
-
-        return n.build()
     }
 
     private fun createProgressNotification(
@@ -448,11 +404,11 @@ class P2pReceiverService : BaseP2pService() {
                         R.string.err_recv_req_timeout
                     )
 
-                    val taskId = sendRequestPayload.optString(
-                        "taskId", sendRequestPayload.optString("id")
-                    )
+                    val taskId = sendRequestPayload.optString("taskId", sendRequestPayload.optString("id"))
                     val senderName = sendRequestPayload.getString("senderName")
-                    updateStage(localTaskId, senderName, LiveStage.CONNECTING)
+
+                    updateStage(localTaskId, senderName, LiveStage.HANDSHAKE)
+
                     val fileName = sendRequestPayload.getString("fileName")
                     val totalSize = sendRequestPayload.getLong("totalSize")
                     val fileCount = sendRequestPayload.getInt("fileCount")
@@ -472,34 +428,17 @@ class P2pReceiverService : BaseP2pService() {
                     } else null
 
                     if (!AppSettings(this@P2pReceiverService).autoAccept) {
-                        // Ask user for confirmation
-                        updateNotification(
-                            createAskingNotification(
-                                localTaskId,
-                                senderName,
-                                fileName,
-                                fileCount,
-                                totalSize,
-                                bigPicture,
-                                textContent
-                            )
-                        )
+                        updateStage(localTaskId, senderName, LiveStage.WAITING_AUTH)
 
                         val userResponse = withTimeoutOrNull(10000L) {
                             waitForAction(localTaskId)
                         }
 
                         if (userResponse != true) {
-                            wsSession.sendStatusIgnoreException(
-                                99,
-                                taskId,
-                                3,
-                                "user refuse"
-                            )
+                            wsSession.sendStatusIgnoreException(99, taskId, 3, "user refuse")
                             throw CancelledByUserException(false)
                         }
                     }
-
                     if (textContent != null) {
                         val cm = getSystemService(ClipboardManager::class.java)
                         cm.setPrimaryClip(ClipData.newPlainText("Shared Text", textContent))
@@ -522,17 +461,9 @@ class P2pReceiverService : BaseP2pService() {
                     val files = client.prepareGet(downloadUrl).execute { downloadRes ->
                         val ist = downloadRes.bodyAsChannel().toInputStream()
 
-                        updateStage(localTaskId, senderName, LiveStage.TRANSFERRING)
-
                         val progress = ProgressCounter(totalSize) { total, processed ->
-                            updateNotification(
-                                createProgressNotification(
-                                    localTaskId,
-                                    senderName,
-                                    total,
-                                    processed
-                                )
-                            )
+                            val percent = (100.0 * processed / total).toInt()
+                            updateStage(localTaskId, senderName, LiveStage.TRANSFERRING, percent)
                         }
 
                         updateStage(localTaskId, senderName, LiveStage.FINALIZING)
@@ -566,7 +497,7 @@ class P2pReceiverService : BaseP2pService() {
                             Log.d(TAG, "WS message: $message")
 
                             if (message.type != "action") {
-                                return@onReceive true// We only care about `action`
+                                return@onReceive true
                             }
 
                             val payload = message.payload ?: return@onReceive true
@@ -605,7 +536,6 @@ class P2pReceiverService : BaseP2pService() {
                             true
                         }
                         downloadJob.onAwait {
-                            // Completed successfully
                             false
                         }
                         statusFuture.onAwait { status ->
@@ -635,7 +565,6 @@ class P2pReceiverService : BaseP2pService() {
         var processedSize = 0L
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            // Disable validation as we only use the file name anyway
             dalvik.system.ZipPathValidator.setCallback(ZipPathValidatorCallback)
         }
 
@@ -682,7 +611,6 @@ class P2pReceiverService : BaseP2pService() {
                         )
                     )
                 } catch (e: Throwable) {
-                    // Remove failed files
                     contentResolver.delete(uri, null, null)
                     throw e
                 }
@@ -697,7 +625,7 @@ class P2pReceiverService : BaseP2pService() {
         return receivedFiles
     }
 
-    private suspend fun waitForAction(taskId: Int) = suspendCancellableCoroutine {
+    private suspend fun waitForAction(taskId: Int) = suspendCancellableCoroutine { continuation ->
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
                 if (intent.getIntExtra("taskId", -1) != taskId) {
@@ -705,19 +633,24 @@ class P2pReceiverService : BaseP2pService() {
                 }
 
                 when (intent.action) {
-                    ACTION_ACCEPTED -> it.resume(true) { cause, _, _ -> }
-                    ACTION_DISMISSED -> it.resume(false) { cause, _, _ -> }
+                    ACTION_ACCEPTED -> continuation.resume(true) { _, _, _ -> }
+                    ACTION_DISMISSED -> continuation.resume(false) { _, _, _ -> }
                 }
             }
         }
 
-        registerInternalBroadcastReceiver(receiver, IntentFilter().apply {
+        val filter = IntentFilter().apply {
             addAction(ACTION_ACCEPTED)
             addAction(ACTION_DISMISSED)
-        })
+        }
+        registerInternalBroadcastReceiver(receiver, filter)
 
-        it.invokeOnCancellation {
-            unregisterReceiver(receiver)
+        continuation.invokeOnCancellation {
+            try {
+                unregisterReceiver(receiver)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to unregister waitForAction receiver", e)
+            }
         }
     }
 

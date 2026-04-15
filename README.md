@@ -1,71 +1,26 @@
-# CatShare
-类原生 & 海外设备，现已加入互传联盟。
+# ReCatShare, name inspired from [Re:Unknown X](https://silentblue.remywiki.com/Re:Unknown_X)
 
-Android 目前已不再支持非系统应用获取手机的 MAC 地址等无法重置的序列号，但由于各品牌的互传功能通常为系统应用，互传联盟协议将设备的 MAC 地址作为其认证信息的一部分，目前暂时无法绕过。
+不过考虑到互传联盟的使用者大多为简中用户，还是说中文吧。
 
-本 App 的 GitHub Release 和 F-Droid 版本签名一致， F-Droid 版本可能相对滞后，可以任意选择。
+由于破坏性重构，项目可能不会及时的同步上游功能，不过始终感谢上游做出的开源贡献
 
-[<img src="https://f-droid.org/badge/get-it-on-zh-cn.png"
-    alt="Get it on F-Droid"
-    height="80">](https://f-droid.org/packages/moe.reimu.catshare)
-[<img src="https://www.openapk.net/images/openapk-badge.png"
-    alt="Get it on OpenAPK"
-    height="80">](https://www.openapk.net/catshare/moe.reimu.catshare/)
-[<img src="https://www.androidfreeware.net/images/androidfreeware-badge.png"
-    alt="Get it on Android Freeware"
-    height="80">](https://www.androidfreeware.net/download-catshare-apk.html)
+## 目前添加了以下功能。
+### 1. 更好的默认设备名。
+上游默认填入"我的手机"，感觉不太美观。万一我是在平板上用的呢。XD
+   
+### 2. 自动关闭功能。
+可按时间/次数统计来实现自动关闭接收功能，可以不用不能没有。
 
-## 功能
-- [x] 蓝牙发现
-- [x] 文件接收
-- [x] 文件发送（需要 Shizuku 支持）
-- [x] 文本传输（两侧均为 CatShare 时复制至剪贴板，接收方为其他设备时以文本文件形式发送） 
+### 3. 初步支持了A16+ 引入的[实时更新通知](https://developer.android.google.cn/develop/ui/views/notifications/live-update?hl=zh-cn)。
+目前是优先级抢占机制，传输任务会抢占后台服务的实时通知权限，毕竟咕噜咕噜每个软件只给一个槽位。后面可能会永久降级后台服务，取决于美观程度
 
-## 支持设备（已测试）
-| 品牌        | 向该设备发送 | 从该设备接收            |
-| ----------- | ------------ | ----------------------- |
-| 小米        | Y            | Y                       |
-| OPPO/一加等 | Y            | Y，但发送端提示接收失败 |
-| vivo        | Y            | Y                       |
+## TODO
+### 1. 客制化品牌ID。
+目前在其他互传联盟的设备看来，CatShare都没有定义品牌导致fallback，小米侧展示为小米，OPPO系是 NULL，其他厂商不知道。~~也许能够支持客制化具体的图标，等我逆向~~
+### 2. ~~引入Dhizuku支持。我也想不到使用场景~~
 
-## 汇报问题
+## 不被考虑
+### 1. 自定义MAC地址。很不幸，MAC地址是动态的，不好做。
 
-你可以在该项目的 issue 区汇报你在使用 CatShare 期间遇到的问题，尽量的，请附上 CatShare 的 adb logcat 日志。
-
-通过该命令获取 CatShare 的日志。
-<details>
-<summary>release(正式版)</summary>
-
-shell(linux)
-```shell
-adb logcat --pid $(adb shell pidof -s moe.reimu.catshare)
-```
-cmd(windows)
-```shell
-for /f "tokens=1" %i in ('adb shell pidof -s moe.reimu.catshare') do adb logcat --pid %i
-```
-</details>
-<details>
-<summary>debug(测试版)</summary>
-
-shell(linux)
-```shell
-adb logcat --pid $(adb shell pidof -s moe.reimu.catshare.debug)
-```
-cmd(windows)
-```shell
-for /f "tokens=1" %i in ('adb shell pidof -s moe.reimu.catshare.debug') do adb logcat --pid %i
-```
-</details>
-建议尽可能完整的截取日志，并注释从什么时候发送或接收内容，尽量使用折叠块语法来包裹日志内容。
-
-````markdown
-<details>
-<summary>Details</summary>
-
-```
-在此处填入日志内容，注意其应被包裹在反括号代码块内
-```
-
-</details>
-````
+# P.S.
+fork改改给女友的三星用的。~~刷了欧版后缺少互传联盟组件。个人技术力不够，不会移植S-互传，移植后连GMS互传都失效了，变成samsung only。气笑了~~

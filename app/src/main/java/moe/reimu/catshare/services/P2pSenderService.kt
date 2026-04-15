@@ -15,7 +15,6 @@ import android.net.wifi.p2p.WifiP2pGroup
 import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Binder
-import android.text.format.Formatter
 import android.util.Log
 import androidx.annotation.DrawableRes
 import androidx.core.app.NotificationCompat
@@ -90,27 +89,30 @@ class P2pSenderService : BaseP2pService() {
     }
 
     override fun onBind(intent: Intent) = binder
-    private fun updateStage(taskId: Int, targetName: String, stage: LiveStage) {
+
+    private fun updateStage(taskId: Int, targetName: String, stage: LiveStage, progress: Int = 0) {
         val cancelIntent = if (stage != LiveStage.COMPLETED) {
             PendingIntent.getBroadcast(
                 this, taskId,
-                Intent(ACTION_CANCEL_SENDING).putExtra("taskId", taskId),
+                Intent(ACTION_CANCEL_SENDING).apply {
+                    putExtra("taskId", taskId)
+                    setPackage(packageName)
+                },
                 PendingIntent.FLAG_IMMUTABLE
             )
         } else null
 
         val builder = NotificationUtils.getLiveNotificationBuilder(
-            this, NotificationUtils.SENDER_CHAN_ID, stage, targetName, cancelIntent
+            this, NotificationUtils.SENDER_CHAN_ID, stage, targetName, progress, cancelIntent
         )
         updateNotification(builder.build())
     }
-
 
     private var groupInfoFuture = CompletableDeferred<WifiP2pGroup>()
 
     private val currentTaskLock = Object()
     private var currentJob: Job? = null
-    private var curreentTaskId: Int? = null
+    private var currentTaskId: Int? = null
 
     private lateinit var notificationManager: NotificationManagerCompat
 
@@ -127,12 +129,9 @@ class P2pSenderService : BaseP2pService() {
 
     override fun onCreate() {
         super.onCreate()
-
         notificationManager = NotificationManagerCompat.from(this)
 
-        registerInternalBroadcastReceiver(internalReceiver, IntentFilter().apply {
-            addAction(ACTION_CANCEL_SENDING)
-        })
+        registerInternalBroadcastReceiver(internalReceiver, IntentFilter(ACTION_CANCEL_SENDING))
     }
 
     @Suppress("DEPRECATION")
@@ -170,7 +169,7 @@ class P2pSenderService : BaseP2pService() {
     @SuppressLint("MissingPermission")
     suspend fun runTask(task: TaskInfo) = coroutineScope {
         val taskIdStr = task.id.toString()
-        updateStage(task.id, task.device.name, LiveStage.PREPARING) // 10%
+        updateStage(task.id, task.device.name, LiveStage.PREPARING)
         var totalSize = 0L
         var fileCount = 0
         var mimeType: String? = null
@@ -298,6 +297,7 @@ class P2pSenderService : BaseP2pService() {
                         )
                     )
                     versionNegotiationFuture.await()
+                    updateStage(task.id, task.device.name, LiveStage.HANDSHAKE)
                     send(
                         Frame.Text(
                             WebSocketMessage(
@@ -345,26 +345,14 @@ class P2pSenderService : BaseP2pService() {
                                     val buffer = ByteArray(1024 * 1024 * 4)
                                     while (true) {
                                         val readLen = ist.read(buffer)
-                                        if (readLen == -1) {
-                                            break
-                                        }
+                                        if (readLen == -1) break
                                         zo.write(buffer, 0, readLen)
                                         processedSize += readLen.toLong()
 
-                                        // Update progress if needed
                                         val now = System.nanoTime()
-                                        val elapsed = TimeUnit.SECONDS.convert(
-                                            now - lastProgressUpdate, TimeUnit.NANOSECONDS
-                                        )
-                                        if (elapsed > 1) {
-                                            updateNotification(
-                                                createProgressNotification(
-                                                    task.id,
-                                                    task.device.name,
-                                                    totalSize,
-                                                    processedSize
-                                                )
-                                            )
+                                        if (TimeUnit.SECONDS.convert(now - lastProgressUpdate, TimeUnit.NANOSECONDS) >= 1) {
+                                            val percent = (100.0 * processedSize / totalSize).toInt()
+                                            updateStage(task.id, task.device.name, LiveStage.TRANSFERRING, percent)
                                             lastProgressUpdate = now
                                         }
                                     }
@@ -475,7 +463,7 @@ class P2pSenderService : BaseP2pService() {
                         R.string.error_send_timeout_ws
                     )
 
-                    updateStage(task.id, task.device.name, LiveStage.CONNECTING)
+                    updateStage(task.id, task.device.name, LiveStage.HANDSHAKE)
 
                     handshakeCompleteFuture.awaitWithTimeout(
                         Duration.ofSeconds(5),
@@ -515,7 +503,6 @@ class P2pSenderService : BaseP2pService() {
                 try {
                     p2pManager.removeGroupSuspend(p2pChannel)
                 } catch (e: Throwable) {
-                    // Ignore
                     e.printStackTrace()
                 }
             }
@@ -528,10 +515,7 @@ class P2pSenderService : BaseP2pService() {
     @SuppressLint("MissingPermission")
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
-
-        if (intent == null) {
-            return START_NOT_STICKY
-        }
+        if (intent == null) return START_NOT_STICKY
 
         if (!MyApplication.getInstance().setBusy()) {
             Log.i(TAG, "Application is busy, skipping")
@@ -539,12 +523,17 @@ class P2pSenderService : BaseP2pService() {
             return START_NOT_STICKY
         }
 
-        @Suppress("DEPRECATION") val task = intent.getParcelableExtra<TaskInfo>("task") ?: return START_NOT_STICKY
+        @Suppress("DEPRECATION")
+        val task = intent.getParcelableExtra<TaskInfo>("task") ?: run {
+            MyApplication.getInstance().clearBusy()
+            return START_NOT_STICKY
+        }
+
         val job = CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
             try {
                 startForeground(
                     NotificationUtils.SENDER_FG_ID,
-                    createPendingNotification(task.id, task.device.name),
+                    NotificationUtils.getLiveNotificationBuilder(this@P2pSenderService, NotificationUtils.SENDER_CHAN_ID, LiveStage.PREPARING, task.device.name).build(),
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
                 )
                 runTask(task)
@@ -569,15 +558,17 @@ class P2pSenderService : BaseP2pService() {
             } finally {
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 MyApplication.getInstance().clearBusy()
+
                 synchronized(currentTaskLock) {
-                    curreentTaskId = null
+                    currentTaskId = null
                     currentJob = null
                 }
+                stopSelf()
             }
         }
 
         synchronized(currentTaskLock) {
-            curreentTaskId = task.id
+            currentTaskId = task.id
             currentJob = job
         }
 
@@ -586,7 +577,7 @@ class P2pSenderService : BaseP2pService() {
 
     fun cancel(taskId: Int) {
         synchronized(currentTaskLock) {
-            if (curreentTaskId == taskId) {
+            if (currentTaskId == taskId) {
                 currentJob?.cancel(CancelledByUserException(false))
             }
         }
@@ -597,48 +588,6 @@ class P2pSenderService : BaseP2pService() {
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setSmallIcon(icon)
             .setPriority(NotificationCompat.PRIORITY_MAX)
-    }
-
-    private fun createCancelSendingAction(taskId: Int) = NotificationCompat.Action.Builder(
-        R.drawable.ic_close,
-        getString(android.R.string.cancel),
-        PendingIntent.getBroadcast(
-            this,
-            taskId,
-            Intent(ACTION_CANCEL_SENDING).putExtra("taskId", taskId),
-            PendingIntent.FLAG_IMMUTABLE
-        )
-    ).build()
-
-    private fun createPendingNotification(taskId: Int, targetName: String) =
-        createNotificationBuilder(R.drawable.ic_upload_file)
-            .setSubText(targetName)
-            .setContentTitle(getString(R.string.preparing_transmission))
-            .setContentText(getString(R.string.noti_connecting))
-            .addAction(createCancelSendingAction(taskId))
-            .setOngoing(true).build()
-
-    private fun createProgressNotification(
-        taskId: Int,
-        targetName: String,
-        totalSize: Long,
-        processedSize: Long
-    ): Notification {
-        val n = createNotificationBuilder(R.drawable.ic_upload_file)
-            .setContentTitle(getString(R.string.sending))
-            .setSubText(targetName)
-            .addAction(createCancelSendingAction(taskId))
-            .setOnlyAlertOnce(true)
-            .setOngoing(true)
-
-        val progress = 100.0 * (processedSize.toDouble() / totalSize.toDouble())
-        n.setProgress(100, progress.toInt(), false)
-
-        val f1 = Formatter.formatShortFileSize(this, processedSize)
-        val f2 = Formatter.formatShortFileSize(this, totalSize)
-        n.setContentText("$f1 / $f2 | ${progress.toInt()}%")
-
-        return n.build()
     }
 
     private fun createFailedNotification(targetName: String, exception: Throwable?): Notification {
@@ -655,16 +604,14 @@ class P2pSenderService : BaseP2pService() {
             .setContentTitle(getString(R.string.send_fail))
             .setSubText(targetName)
             .setContentText(
-                if (exception != null && exception is ExceptionWithMessage) {
-                    exception.getMessage(this)
-                } else if (exception != null && exception is CancelledByUserException) {
-                    if (exception.isRemote) {
+                when (exception) {
+                    is ExceptionWithMessage -> exception.getMessage(this)
+                    is CancelledByUserException -> if (exception.isRemote) {
                         getString(R.string.cancelled_by_user_remote)
                     } else {
                         getString(R.string.cancelled_by_user_local)
                     }
-                } else {
-                    getString(R.string.noti_send_interrupted)
+                    else -> getString(R.string.noti_send_interrupted)
                 }
             )
             .setAutoCancel(true)
@@ -685,8 +632,7 @@ class P2pSenderService : BaseP2pService() {
 
     companion object {
         private const val ACTION_VERSION_NEGOTIATION = "versionNegotiation"
-
-        private const val ACTION_CANCEL_SENDING = "${BuildConfig.APPLICATION_ID}.CANCEL_SENDING"
+        private val ACTION_CANCEL_SENDING = "${BuildConfig.APPLICATION_ID}.CANCEL_SENDING"
 
         fun getIntent(context: Context, task: TaskInfo): Intent {
             return Intent(context, P2pSenderService::class.java).apply {

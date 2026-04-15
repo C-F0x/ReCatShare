@@ -1,6 +1,5 @@
 package moe.reimu.catshare.services
 
-
 import android.annotation.SuppressLint
 import android.app.ForegroundServiceStartNotAllowedException
 import android.app.Notification
@@ -28,7 +27,6 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.ParcelUuid
 import android.util.Log
-import androidx.core.app.NotificationCompat
 import kotlinx.serialization.json.Json
 import moe.reimu.catshare.AppSettings
 import moe.reimu.catshare.BleSecurity
@@ -38,6 +36,7 @@ import moe.reimu.catshare.models.DeviceInfo
 import moe.reimu.catshare.models.P2pInfo
 import moe.reimu.catshare.utils.BleUtils
 import moe.reimu.catshare.utils.JsonWithUnknownKeys
+import moe.reimu.catshare.utils.LiveStage
 import moe.reimu.catshare.utils.NotificationUtils
 import moe.reimu.catshare.utils.ServiceState
 import moe.reimu.catshare.utils.ShizukuUtils
@@ -65,6 +64,13 @@ class GattServerService : Service() {
     private var receiveCount = 0
     private var startTime = 0L
 
+    private var isFinishing = false
+
+    private var isBusy = false
+    private val notificationManager by lazy {
+        getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
+    }
+
     private val updateTicker = object : Runnable {
         override fun run() {
             broadcastState()
@@ -73,34 +79,55 @@ class GattServerService : Service() {
     }
 
     private fun broadcastState() {
+        if (isBusy) return
+
         val settings = AppSettings(this)
         var progress = 0f
         var progressText = ""
 
-        when (settings.autoShutdownMode) {
-            1 -> {
-                val totalMs = settings.autoShutdownMinutes * 60 * 1000L
-                val elapsedMs = System.currentTimeMillis() - startTime
-                val remainingMs = max(0L, totalMs - elapsedMs)
-                progress = (elapsedMs.toFloat() / totalMs).coerceIn(0f, 1f)
-                val remainingMin = remainingMs / 1000 / 60
-                val remainingSec = (remainingMs / 1000) % 60
-                progressText = String.format("%02d:%02d", remainingMin, remainingSec)
-                if (remainingMs <= 0) stopSelf()
-            }
-            2 -> {
-                val total = settings.autoShutdownCount
-                progress = (receiveCount.toFloat() / total).coerceIn(0f, 1f)
-                progressText = "${max(0, total - receiveCount)} 次"
+        if (isFinishing) {
+            progress = 1f
+            progressText = getString(R.string.done)
+        } else {
+            when (settings.autoShutdownMode) {
+                1 -> {
+                    val totalMs = settings.autoShutdownMinutes * 60 * 1000L
+                    val elapsedMs = System.currentTimeMillis() - startTime
+                    val remainingMs = max(0L, totalMs - elapsedMs)
+                    progress = (elapsedMs.toFloat() / totalMs).coerceIn(0f, 1f)
+                    val remainingMin = remainingMs / 1000 / 60
+                    val remainingSec = (remainingMs / 1000) % 60
+                    progressText = String.format("%02d:%02d", remainingMin, remainingSec)
+
+                    if (remainingMs <= 0) {
+                        triggerFinishing()
+                        return
+                    }
+                }
+                2 -> {
+                    val total = settings.autoShutdownCount
+                    progress = (receiveCount.toFloat() / total).coerceIn(0f, 1f)
+                    progressText = "${max(0, total - receiveCount)} R.string.auto_shutdown_count_unit"
+                }
             }
         }
 
-        sendBroadcast(ServiceState.getUpdateIntent(true, progress, progressText))
-        val nm = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
-        nm.notify(
+        sendBroadcast(ServiceState.getUpdateIntent(true, progress, progressText, isFinishing))
+
+        notificationManager.notify(
             NotificationUtils.GATT_SERVER_FG_ID,
-            createNotification(progressText.ifEmpty { null })
+            buildStandbyNotification(settings.autoShutdownMode, progress, progressText.ifEmpty { null })
         )
+    }
+
+    private fun triggerFinishing() {
+        if (isFinishing) return
+        isFinishing = true
+        shutdownHandler.removeCallbacks(updateTicker)
+        val doneText = this@GattServerService.getString(R.string.done)
+
+        broadcastState()
+        shutdownHandler.postDelayed({ stopSelf() }, 10000)
     }
 
     private val internalReceiver = object : BroadcastReceiver() {
@@ -109,14 +136,34 @@ class GattServerService : Service() {
                 ServiceState.ACTION_QUERY_RECEIVER_STATE -> {
                     broadcastState()
                 }
-
                 ServiceState.ACTION_STOP_SERVICE -> {
                     Log.i(GattServerService.TAG, "Received ACTION_STOP_SERVICE")
                     stopSelf()
                 }
+
+                ServiceState.ACTION_BUSY_CHANGED -> {
+                    isBusy = intent.getBooleanExtra("busy", false)
+                    if (isBusy) {
+                        shutdownHandler.removeCallbacks(updateTicker)
+                        notificationManager.notify(
+                            NotificationUtils.GATT_SERVER_FG_ID,
+                            NotificationUtils.getReceiverBusyNotification(this@GattServerService)
+                        )
+                    } else {
+                        if (isFinishing) return
+
+                        val settings = AppSettings(this@GattServerService)
+                        if (settings.autoShutdownMode == 1 || settings.autoShutdownMode == 2) {
+                            shutdownHandler.post(updateTicker)
+                        } else {
+                            broadcastState()
+                        }
+                    }
+                }
             }
         }
     }
+
     private var internalReceiverRegistered = false
 
     private val advSetCallback = object : AdvertisingSetCallback() {
@@ -218,21 +265,21 @@ class GattServerService : Service() {
             val liveBuilder = NotificationUtils.getLiveNotificationBuilder(
                 this@GattServerService,
                 NotificationUtils.RECEIVER_CHAN_ID,
-                moe.reimu.catshare.utils.LiveStage.PREPARING,
+                LiveStage.PREPARING,
                 "CatShare"
             )
 
-            val nm = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
-            nm.notify(NotificationUtils.RECEIVER_FG_ID, liveBuilder.build())
+            notificationManager.notify(NotificationUtils.RECEIVER_FG_ID, liveBuilder.build())
 
             startService(P2pReceiverService.getIntent(this@GattServerService, p2pInfo))
 
             val settings = AppSettings(this@GattServerService)
             if (settings.autoShutdownMode == 2) {
                 receiveCount++
-                broadcastState()
                 if (receiveCount >= settings.autoShutdownCount) {
-                    shutdownHandler.postDelayed({ stopSelf() }, 1000)
+                    triggerFinishing()
+                } else {
+                    broadcastState()
                 }
             }
         }
@@ -264,7 +311,7 @@ class GattServerService : Service() {
         try {
             startForeground(
                 NotificationUtils.GATT_SERVER_FG_ID,
-                createNotification(),
+                buildStandbyNotification(AppSettings(this).autoShutdownMode, 0f, null),
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
             )
         } catch (e: Exception) {
@@ -285,11 +332,14 @@ class GattServerService : Service() {
 
         startAdv()
 
-        registerInternalBroadcastReceiver(internalReceiver, IntentFilter().apply {
+        val filter = IntentFilter().apply {
             addAction(ServiceState.ACTION_QUERY_RECEIVER_STATE)
             addAction(ServiceState.ACTION_STOP_SERVICE)
-        })
+            addAction(ServiceState.ACTION_BUSY_CHANGED)
+        }
+        registerInternalBroadcastReceiver(internalReceiver, filter)
         internalReceiverRegistered = true
+
         sendBroadcast(ServiceState.getUpdateIntent(true))
 
         val settings = AppSettings(this)
@@ -300,28 +350,17 @@ class GattServerService : Service() {
         }
     }
 
-    private fun createNotification(etaText: String? = null): Notification {
-        val pi = PendingIntent.getBroadcast(
+    private fun buildStandbyNotification(mode: Int, progress: Float, statusText: String?): Notification {
+        val stopIntent = PendingIntent.getBroadcast(
             this, 0, ServiceState.getStopIntent(), PendingIntent.FLAG_IMMUTABLE
         )
-
-        val settings = AppSettings(this)
-        val contentText = when {
-            etaText != null && settings.autoShutdownMode == 1 ->
-                "${getString(R.string.discoverable_desc)}  •  ${getString(R.string.eta)}: $etaText"
-            etaText != null && settings.autoShutdownMode == 2 ->
-                "${getString(R.string.discoverable_desc)}  •  ${getString(R.string.eta)}: $etaText"
-            else ->
-                getString(R.string.discoverable_desc)
-        }
-
-        return NotificationCompat.Builder(this, NotificationUtils.RECEIVER_FG_CHAN_ID)
-            .setSmallIcon(R.drawable.ic_bluetooth_searching)
-            .setContentTitle(getString(R.string.noti_receiver_title))
-            .setContentText(contentText)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .addAction(R.drawable.ic_close, getString(R.string.stop), pi)
-            .build()
+        return NotificationUtils.getReceiverStandbyNotification(
+            context = this,
+            stopIntent = stopIntent,
+            mode = mode,
+            progressCurrent = (progress * 100).toInt(),
+            statusText = statusText
+        )
     }
 
     override fun onBind(intent: Intent): IBinder? {
@@ -416,18 +455,17 @@ class GattServerService : Service() {
         if (internalReceiverRegistered) {
             unregisterReceiver(internalReceiver)
         }
+
         sendBroadcast(ServiceState.getUpdateIntent(false))
 
         try {
             advertisingSet?.run {
                 btAdvertiser?.stopAdvertisingSet(advSetCallback)
             }
-
         } catch (e: Exception) {
             Log.e(TAG, "Failed to stop advertising", e)
         }
         advertisingSet = null
-
 
         try {
             gattServer?.close()

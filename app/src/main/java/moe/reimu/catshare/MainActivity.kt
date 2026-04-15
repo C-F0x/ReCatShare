@@ -53,6 +53,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -111,18 +112,16 @@ class MainActivity : AppCompatActivity() {
             permissionsToRequest.add(Manifest.permission.ACCESS_FINE_LOCATION)
         }
 
-        if (Build.VERSION.SDK_INT >= 31) {
-            for (perm in listOf(
-                Manifest.permission.BLUETOOTH_ADVERTISE,
-                Manifest.permission.BLUETOOTH_SCAN,
-                Manifest.permission.BLUETOOTH_CONNECT
-            )) {
-                if (ContextCompat.checkSelfPermission(
-                        this, perm
-                    ) != PackageManager.PERMISSION_GRANTED
-                ) {
-                    permissionsToRequest.add(perm)
-                }
+        for (perm in listOf(
+            Manifest.permission.BLUETOOTH_ADVERTISE,
+            Manifest.permission.BLUETOOTH_SCAN,
+            Manifest.permission.BLUETOOTH_CONNECT
+        )) {
+            if (ContextCompat.checkSelfPermission(
+                    this, perm
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                permissionsToRequest.add(perm)
             }
         }
 
@@ -151,6 +150,7 @@ class MainActivity : AppCompatActivity() {
 @Composable
 fun MainActivityContent() {
     var checked by remember { mutableStateOf(false) }
+    var isBusy by remember { mutableStateOf(MyApplication.getInstance().getBusy()) }
     var currentProgress by remember { mutableFloatStateOf(0f) }
     var progressText by remember { mutableStateOf("") }
 
@@ -173,18 +173,25 @@ fun MainActivityContent() {
     DisposableEffect(context) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
-                if (intent.action == ServiceState.ACTION_UPDATE_RECEIVER_STATE) {
-                    checked = intent.getBooleanExtra("isRunning", false)
-                    currentProgress = intent.getFloatExtra("progress", 0f)
-                    progressText = intent.getStringExtra("progressText") ?: ""
+                when (intent.action) {
+                    ServiceState.ACTION_UPDATE_RECEIVER_STATE -> {
+                        checked = intent.getBooleanExtra("isRunning", false)
+                        currentProgress = intent.getFloatExtra("progress", 0f)
+                        progressText = intent.getStringExtra("progressText") ?: ""
+                    }
+                    MyApplication.ACTION_BUSY_CHANGED -> {
+                        isBusy = intent.getBooleanExtra("busy", false)
+                    }
                 }
             }
         }
 
-        context.registerInternalBroadcastReceiver(
-            receiver,
-            IntentFilter(ServiceState.ACTION_UPDATE_RECEIVER_STATE),
-        )
+        val filter = IntentFilter().apply {
+            addAction(ServiceState.ACTION_UPDATE_RECEIVER_STATE)
+            addAction(MyApplication.ACTION_BUSY_CHANGED)
+        }
+
+        context.registerInternalBroadcastReceiver(receiver, filter)
         context.sendBroadcast(ServiceState.getQueryIntent())
 
         onDispose {
@@ -252,11 +259,13 @@ fun MainActivityContent() {
             contentPadding = PaddingValues(horizontal = 16.dp),
         ) {
             item {
-                DefaultCard(onClick = {
-                    pickFilesLauncher.launch()
-                }) {
+                DefaultCard(
+                    onClick = { if (!isBusy) pickFilesLauncher.launch() }
+                ) {
                     Row(
-                        modifier = Modifier.padding(16.dp),
+                        modifier = Modifier
+                            .padding(16.dp)
+                            .alpha(if (isBusy) 0.5f else 1f),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         MyIcon(Icons.Filled.Share)
@@ -283,19 +292,24 @@ fun MainActivityContent() {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = stringResource(R.string.discoverable),
-                                style = MaterialTheme.typography.titleMedium,
+                                style = MaterialTheme.typography.titleMedium
                             )
                             Text(
-                                text = stringResource(R.string.discoverable_desc),
+                                text = stringResource(R.string.discoverable_desc)
                             )
                         }
-                        Switch(checked = checked, onCheckedChange = {
-                            if (it) {
-                                GattServerService.start(context)
-                            } else {
-                                GattServerService.stop(context)
-                            }
-                        }, modifier = Modifier.padding(start = 8.dp))
+                        Switch(
+                            checked = checked,
+                            enabled = !isBusy,
+                            onCheckedChange = {
+                                if (it) {
+                                    GattServerService.start(context)
+                                } else {
+                                    GattServerService.stop(context)
+                                }
+                            },
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
                     }
                 }
             }
@@ -321,7 +335,8 @@ fun MainActivityContent() {
                                 )
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text(
-                                        text = if (autoShutdownMode == 1) stringResource(R.string.time_remaining) else stringResource(R.string.count_remaining),                                        style = MaterialTheme.typography.labelMedium,
+                                        text = if (autoShutdownMode == 1) stringResource(R.string.time_remaining) else stringResource(R.string.count_remaining),
+                                        style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     Text(
@@ -405,7 +420,7 @@ class ChooseFilesContract : ActivityResultContract<Void?, List<Uri>>() {
         val ret = mutableListOf<Uri>()
         val clipData = intent.clipData
         if (clipData != null) {
-            for (i in 0..<clipData.itemCount) {
+            for (i in 0 until clipData.itemCount) {
                 clipData.getItemAt(i).uri?.let { ret.add(it) }
             }
         } else {
@@ -444,10 +459,18 @@ fun WavyProgressRing(
 
         AndroidView(
             factory = { context ->
-                val themedContext = ContextThemeWrapper(
-                    context,
-                    com.google.android.material.R.style.Widget_Material3Expressive_CircularProgressIndicator_Wavy
-                )
+                val styleRes = try {
+                    val id = context.resources.getIdentifier(
+                        "Widget.Material3Expressive.CircularProgressIndicator.Wavy",
+                        "style",
+                        context.packageName
+                    )
+                    if (id != 0) id else com.google.android.material.R.style.Widget_Material3_CircularProgressIndicator
+                } catch (e: Exception) {
+                    com.google.android.material.R.style.Widget_Material3_CircularProgressIndicator
+                }
+
+                val themedContext = ContextThemeWrapper(context, styleRes)
                 CircularProgressIndicator(themedContext).apply {
                     isIndeterminate = false
                     max = 10_000
@@ -459,7 +482,7 @@ fun WavyProgressRing(
                 view.indicatorSize  = sizePx
                 view.trackThickness = strokePx
                 view.setIndicatorColor(consumedArgb)
-                view.setTrackColor(unconsumedArgb)
+                view.trackColor = unconsumedArgb
                 view.setProgressCompat((progress * 10_000).toInt(), true)
             }
         )
