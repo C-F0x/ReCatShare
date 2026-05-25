@@ -57,10 +57,13 @@ import moe.reimu.catshare.models.DeviceInfo
 import moe.reimu.catshare.models.P2pInfo
 import moe.reimu.catshare.models.TaskInfo
 import moe.reimu.catshare.models.WebSocketMessage
+import moe.reimu.catshare.models.LiveUpdatePriority
+import moe.reimu.catshare.models.LiveUpdateState
 import moe.reimu.catshare.utils.BleUtils
 import moe.reimu.catshare.utils.DeviceUtils
 import moe.reimu.catshare.utils.JsonWithUnknownKeys
 import moe.reimu.catshare.utils.LiveStage
+import moe.reimu.catshare.utils.LiveUpdateCoordinator
 import moe.reimu.catshare.utils.NotificationUtils
 import moe.reimu.catshare.utils.ShizukuUtils
 import moe.reimu.catshare.utils.TAG
@@ -83,6 +86,7 @@ import kotlin.random.Random
 
 class P2pSenderService : BaseP2pService() {
     private val binder = LocalBinder()
+    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     inner class LocalBinder : Binder() {
         fun getService(): P2pSenderService = this@P2pSenderService
@@ -102,15 +106,50 @@ class P2pSenderService : BaseP2pService() {
             )
         } else null
 
-        val builder = NotificationUtils.getLiveNotificationBuilder(
-            this, NotificationUtils.SENDER_CHAN_ID, stage, targetName, progress, cancelIntent
+        val content = when (stage) {
+            LiveStage.INIT -> getString(R.string.preparing_transmission)
+            LiveStage.PREPARING -> getString(R.string.preparing_transmission)
+            LiveStage.REQUESTED -> getString(R.string.response_waiting)
+            LiveStage.HANDSHAKE -> getString(R.string.noti_connecting)
+            LiveStage.WAITING_AUTH -> getString(R.string.auth_waiting)
+            LiveStage.TRANSFERRING -> getString(R.string.transferring_files)
+            LiveStage.FINALIZING -> getString(R.string.finishing)
+            LiveStage.COMPLETED -> getString(R.string.done)
+        }
+
+        val displayProgress = if (stage == LiveStage.TRANSFERRING) {
+            40 + (progress * 0.5).toInt()
+        } else {
+            stage.progress
+        }
+
+        val state = LiveUpdateState(
+            title = getString(R.string.sending),
+            content = content,
+            subText = targetName,
+            progress = if (stage != LiveStage.COMPLETED) displayProgress else -1,
+            shortCriticalText = if (stage == LiveStage.TRANSFERRING) "$progress%" else content.take(7),
+            priority = LiveUpdatePriority.CRITICAL,
+            cancelIntent = cancelIntent,
+            channelId = NotificationUtils.SENDER_CHAN_ID,
+            smallIcon = if (stage == LiveStage.COMPLETED) R.drawable.ic_done else R.drawable.ic_downloading
         )
-        updateNotification(builder.build())
+
+        LiveUpdateCoordinator.publishState("SENDER", state)
+        updateForeground()
+    }
+
+    private fun updateForeground() {
+        startForeground(
+            NotificationUtils.ID_LIVE_UPDATE,
+            NotificationUtils.getCurrentLiveNotification(this),
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+        )
     }
 
     private var groupInfoFuture = CompletableDeferred<WifiP2pGroup>()
 
-    private val currentTaskLock = Object()
+    private val currentTaskLock = Any()
     private var currentJob: Job? = null
     private var currentTaskId: Int? = null
 
@@ -149,19 +188,19 @@ class P2pSenderService : BaseP2pService() {
                     groupInfoFuture.complete(group)
                 }
 
-                Log.d(P2pSenderService.TAG, "P2P info: $connInfo, P2P group: $group")
+                Log.d(TAG, "P2P info: $connInfo, P2P group: $group")
             }
 
             WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION -> {
                 val peers =
                     intent.getParcelableExtra<WifiP2pDeviceList>(WifiP2pManager.EXTRA_P2P_DEVICE_LIST)!!
-                Log.d(P2pSenderService.TAG, "P2P peers: $peers")
+                Log.d(TAG, "P2P peers: $peers")
             }
 
             WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION -> {
                 val device =
                     intent.getParcelableExtra<WifiP2pDevice>(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE)!!
-                Log.d(P2pSenderService.TAG, "Local P2P device: $device")
+                Log.d(TAG, "Local P2P device: $device")
             }
         }
     }
@@ -246,7 +285,7 @@ class P2pSenderService : BaseP2pService() {
                                     ?: throw IllegalArgumentException("Invalid frame type")
                                 val message = WebSocketMessage.fromText(rawMessage.readText())
                                     ?: throw IllegalArgumentException("Failed to parse message")
-                                Log.d(P2pSenderService.TAG, "Incoming message: $message")
+                                Log.d(TAG, "Incoming message: $message")
 
                                 when (message.type) {
                                     "action" -> {
@@ -411,7 +450,7 @@ class P2pSenderService : BaseP2pService() {
                         val bleClient = ClientBleGatt.connect(
                             this@P2pSenderService,
                             RealServerDevice(task.device.device),
-                            this@withTimeoutReason,
+                            this,
                         )
                         gBleClient = bleClient
 
@@ -514,7 +553,6 @@ class P2pSenderService : BaseP2pService() {
 
     @SuppressLint("MissingPermission")
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        super.onStartCommand(intent, flags, startId)
         if (intent == null) return START_NOT_STICKY
 
         if (!MyApplication.getInstance().setBusy()) {
@@ -529,13 +567,9 @@ class P2pSenderService : BaseP2pService() {
             return START_NOT_STICKY
         }
 
-        val job = CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
+        val job = scope.launch(Dispatchers.IO) {
             try {
-                startForeground(
-                    NotificationUtils.SENDER_FG_ID,
-                    NotificationUtils.getLiveNotificationBuilder(this@P2pSenderService, NotificationUtils.SENDER_CHAN_ID, LiveStage.PREPARING, task.device.name).build(),
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-                )
+                updateStage(task.id, task.device.name, LiveStage.PREPARING)
                 runTask(task)
                 updateStage(task.id, task.device.name, LiveStage.COMPLETED)
                 delay(5000)
@@ -556,7 +590,7 @@ class P2pSenderService : BaseP2pService() {
                     createFailedNotification(task.device.name, e)
                 )
             } finally {
-                stopForeground(STOP_FOREGROUND_REMOVE)
+                LiveUpdateCoordinator.clearState("SENDER")
                 MyApplication.getInstance().clearBusy()
 
                 synchronized(currentTaskLock) {
@@ -625,12 +659,14 @@ class P2pSenderService : BaseP2pService() {
             .setAutoCancel(true)
             .build()
 
-    @SuppressLint("MissingPermission")
-    private fun updateNotification(n: Notification) {
-        notificationManager.notify(NotificationUtils.SENDER_FG_ID, n)
+    override fun onDestroy() {
+        super.onDestroy()
+        LiveUpdateCoordinator.clearState("SENDER")
+        scope.launch { currentJob?.cancel() }
     }
 
     companion object {
+        val TAG: String = P2pSenderService::class.java.simpleName
         private const val ACTION_VERSION_NEGOTIATION = "versionNegotiation"
         private val ACTION_CANCEL_SENDING = "${BuildConfig.APPLICATION_ID}.CANCEL_SENDING"
 

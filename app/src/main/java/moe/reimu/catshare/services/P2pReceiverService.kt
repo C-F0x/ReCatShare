@@ -63,7 +63,10 @@ import moe.reimu.catshare.exceptions.ExceptionWithMessage
 import moe.reimu.catshare.models.P2pInfo
 import moe.reimu.catshare.models.ReceivedFile
 import moe.reimu.catshare.models.WebSocketMessage
+import moe.reimu.catshare.models.LiveUpdatePriority
+import moe.reimu.catshare.models.LiveUpdateState
 import moe.reimu.catshare.utils.LiveStage
+import moe.reimu.catshare.utils.LiveUpdateCoordinator
 import moe.reimu.catshare.utils.NotificationUtils
 import moe.reimu.catshare.utils.ProgressCounter
 import moe.reimu.catshare.utils.TAG
@@ -88,6 +91,7 @@ import kotlin.random.Random
 
 class P2pReceiverService : BaseP2pService() {
     private lateinit var notificationManager: NotificationManagerCompat
+    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     private fun updateStage(taskId: Int, senderName: String, stage: LiveStage, progress: Int = 0) {
         val cancelIntent = if (stage != LiveStage.COMPLETED) {
@@ -98,19 +102,52 @@ class P2pReceiverService : BaseP2pService() {
             )
         } else null
 
-        val builder = NotificationUtils.getLiveNotificationBuilder(
-            this, NotificationUtils.RECEIVER_CHAN_ID, stage, senderName, progress, cancelIntent
-        )
-
-        if (stage == LiveStage.WAITING_AUTH) {
-            val acceptIntent = PendingIntent.getBroadcast(this, taskId, Intent(ACTION_ACCEPTED).apply { putExtra("taskId", taskId) }, PendingIntent.FLAG_IMMUTABLE)
-            val dismissIntent = PendingIntent.getBroadcast(this, taskId, Intent(ACTION_DISMISSED).apply { putExtra("taskId", taskId) }, PendingIntent.FLAG_IMMUTABLE)
-            builder.addAction(R.drawable.ic_done, getString(R.string.accept), acceptIntent)
-            builder.addAction(R.drawable.ic_close, getString(R.string.reject), dismissIntent)
+        val title = when (stage) {
+            LiveStage.COMPLETED -> getString(R.string.recv_ok)
+            else -> getString(R.string.receiving)
         }
 
-        updateNotification(builder.build())
+        val content = when (stage) {
+            LiveStage.INIT -> getString(R.string.preparing_transmission)
+            LiveStage.PREPARING -> getString(R.string.preparing_transmission)
+            LiveStage.REQUESTED -> getString(R.string.response_waiting)
+            LiveStage.HANDSHAKE -> getString(R.string.noti_connecting)
+            LiveStage.WAITING_AUTH -> getString(R.string.auth_waiting)
+            LiveStage.TRANSFERRING -> getString(R.string.transferring_files)
+            LiveStage.FINALIZING -> getString(R.string.finishing)
+            LiveStage.COMPLETED -> getString(R.string.done)
+        }
+
+        val displayProgress = if (stage == LiveStage.TRANSFERRING) {
+            40 + (progress * 0.5).toInt()
+        } else {
+            stage.progress
+        }
+
+        val state = LiveUpdateState(
+            title = title,
+            content = content,
+            subText = senderName,
+            progress = if (stage != LiveStage.COMPLETED) displayProgress else -1,
+            shortCriticalText = if (stage == LiveStage.TRANSFERRING) "$progress%" else content.take(7),
+            priority = LiveUpdatePriority.CRITICAL,
+            cancelIntent = cancelIntent,
+            channelId = NotificationUtils.RECEIVER_CHAN_ID,
+            smallIcon = if (stage == LiveStage.COMPLETED) R.drawable.ic_done else R.drawable.ic_downloading
+        )
+
+        LiveUpdateCoordinator.publishState("RECEIVER", state)
+        updateForeground()
     }
+
+    private fun updateForeground() {
+        startForeground(
+            NotificationUtils.ID_LIVE_UPDATE,
+            NotificationUtils.getCurrentLiveNotification(this),
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+        )
+    }
+
     private val internalReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
@@ -150,7 +187,7 @@ class P2pReceiverService : BaseP2pService() {
                 val group = intent.getParcelableExtra<WifiP2pGroup>(
                     WifiP2pManager.EXTRA_WIFI_P2P_GROUP
                 )
-                Log.d(P2pReceiverService.TAG, "P2P info: $connInfo, P2P group: $group")
+                Log.d(TAG, "P2P info: $connInfo, P2P group: $group")
 
                 if (connInfo.groupFormed && !connInfo.isGroupOwner && group != null) {
                     p2pFuture.complete(Pair(connInfo, group))
@@ -160,7 +197,7 @@ class P2pReceiverService : BaseP2pService() {
     }
 
 
-    private val currentTaskLock = Object()
+    private val currentTaskLock = Any()
     private var currentJob: Job? = null
     private var currentTaskId: Int? = null
 
@@ -171,8 +208,6 @@ class P2pReceiverService : BaseP2pService() {
     @SuppressLint("MissingPermission")
     @Suppress("DEPRECATION")
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        super.onStartCommand(intent, flags, startId)
-
         if (intent == null) {
             return START_NOT_STICKY
         }
@@ -189,13 +224,9 @@ class P2pReceiverService : BaseP2pService() {
         }
 
         val localTaskId = Random.nextInt()
-        val job = CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
+        val job = scope.launch(Dispatchers.IO) {
             try {
-                startForeground(
-                    NotificationUtils.RECEIVER_FG_ID,
-                    NotificationUtils.getLiveNotificationBuilder(this@P2pReceiverService, NotificationUtils.RECEIVER_CHAN_ID, LiveStage.INIT, "CatShare").build(),
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-                )
+                updateStage(localTaskId, "Device", LiveStage.INIT)
                 runReceive(info, localTaskId)
                 updateStage(localTaskId, "CatShare", LiveStage.COMPLETED)
                 delay(5000)
@@ -212,8 +243,13 @@ class P2pReceiverService : BaseP2pService() {
                     createFailedNotification(e)
                 )
             } finally {
-                stopForeground(STOP_FOREGROUND_REMOVE)
+                LiveUpdateCoordinator.clearState("RECEIVER")
                 MyApplication.getInstance().clearBusy()
+                
+                synchronized(currentTaskLock) {
+                    currentTaskId = null
+                    currentJob = null
+                }
                 stopSelf()
             }
         }
@@ -246,38 +282,6 @@ class P2pReceiverService : BaseP2pService() {
         return NotificationCompat.Builder(this, NotificationUtils.RECEIVER_CHAN_ID)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setSmallIcon(icon).setPriority(NotificationCompat.PRIORITY_MAX)
-    }
-
-    private fun createProgressNotification(
-        taskId: Int, senderName: String, totalSize: Long, processedSize: Long?
-    ): Notification {
-        val cancelIntent = PendingIntent.getBroadcast(
-            this,
-            taskId,
-            Intent(ACTION_CANCEL_RECEIVING).apply { putExtra("taskId", taskId) },
-            PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val n =
-            createNotificationBuilder(R.drawable.ic_downloading).setContentTitle(getString(R.string.receiving))
-                .setSubText(senderName)
-                .addAction(R.drawable.ic_close, getString(android.R.string.cancel), cancelIntent)
-                .setOngoing(true).setOnlyAlertOnce(true)
-        var text = getString(R.string.preparing)
-
-        if (processedSize != null) {
-            val progress = 100.0 * (processedSize.toDouble() / totalSize.toDouble())
-            n.setProgress(100, progress.toInt(), false)
-
-            val f1 = Formatter.formatShortFileSize(this, processedSize)
-            val f2 = Formatter.formatShortFileSize(this, totalSize)
-            text = "$f1 / $f2 | ${progress.toInt()}%"
-        } else {
-            n.setProgress(0, 0, true)
-        }
-        n.setContentText(text)
-
-        return n.build()
     }
 
     private fun createCompletedNotification(
@@ -348,11 +352,6 @@ class P2pReceiverService : BaseP2pService() {
     }
 
     @SuppressLint("MissingPermission")
-    private fun updateNotification(n: Notification) {
-        notificationManager.notify(NotificationUtils.RECEIVER_FG_ID, n)
-    }
-
-    @SuppressLint("MissingPermission")
     private suspend fun runReceive(p2pInfo: P2pInfo, localTaskId: Int) = coroutineScope {
         updateStage(localTaskId, "Device", LiveStage.PREPARING)
         val client = HttpClient(OkHttp) {
@@ -387,7 +386,7 @@ class P2pReceiverService : BaseP2pService() {
             }
             p2pManager.connectSuspend(p2pChannel, p2pConfig)
             try {
-                val (wifiP2pInfo, wifiP2pGroup) = p2pFuture.awaitWithTimeout(
+                val (wifiP2pInfo, _) = p2pFuture.awaitWithTimeout(
                     Duration.ofSeconds(10), "Waiting for P2P connect", R.string.error_p2p_failed
                 )
 
@@ -409,7 +408,6 @@ class P2pReceiverService : BaseP2pService() {
 
                     updateStage(localTaskId, senderName, LiveStage.HANDSHAKE)
 
-                    val fileName = sendRequestPayload.getString("fileName")
                     val totalSize = sendRequestPayload.getLong("totalSize")
                     val fileCount = sendRequestPayload.getInt("fileCount")
                     val textContent = if (sendRequestPayload.has("catShareText")) {
@@ -419,13 +417,13 @@ class P2pReceiverService : BaseP2pService() {
                     }
 
                     val thumbPath = sendRequestPayload.optString("thumbnail")
-                    val bigPicture = if (thumbPath.isNotEmpty()) {
+                    if (thumbPath.isNotEmpty()) {
                         val thumbUrl = "https://${hostPort}$thumbPath"
                         Log.d(TAG, "Fetching thumbnail from $thumbUrl")
 
                         val body = client.get(thumbUrl).bodyAsBytes()
                         BitmapFactory.decodeByteArray(body, 0, body.size)
-                    } else null
+                    }
 
                     if (!AppSettings(this@P2pReceiverService).autoAccept) {
                         updateStage(localTaskId, senderName, LiveStage.WAITING_AUTH)
@@ -449,12 +447,6 @@ class P2pReceiverService : BaseP2pService() {
                         delay(1000)
                         return@async
                     }
-
-                    updateNotification(
-                        createProgressNotification(
-                            localTaskId, senderName, totalSize, null
-                        )
-                    )
 
                     val downloadUrl = "https://${hostPort}/download?taskId=${taskId}"
 
@@ -574,7 +566,7 @@ class P2pReceiverService : BaseP2pService() {
                 continue
             }
 
-            Log.d(P2pReceiverService.TAG, "Entry ${entry.name}")
+            Log.d(TAG, "Entry ${entry.name}")
 
             val entryFile = File(entry.name)
             val values = createContentValues(entryFile)
@@ -664,8 +656,8 @@ class P2pReceiverService : BaseP2pService() {
 
     override fun onDestroy() {
         super.onDestroy()
-
-        Log.d(TAG, "onDestroy")
+        LiveUpdateCoordinator.clearState("RECEIVER")
+        scope.launch { currentJob?.cancel() }
 
         if (internalReceiverRegistered) {
             unregisterReceiver(internalReceiver)
@@ -683,6 +675,7 @@ class P2pReceiverService : BaseP2pService() {
     }
 
     companion object {
+        val TAG: String = P2pReceiverService::class.java.simpleName
         fun getIntent(context: Context, p2pInfo: P2pInfo): Intent {
             return Intent(context, P2pReceiverService::class.java).apply {
                 putExtra("p2p_info", p2pInfo)

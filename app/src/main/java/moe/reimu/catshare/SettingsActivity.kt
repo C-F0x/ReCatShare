@@ -44,7 +44,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.core.content.FileProvider
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import moe.reimu.catshare.utils.isIgnoringBatteryOptimizations
+import moe.reimu.catshare.utils.requestIgnoreBatteryOptimizations
 import moe.reimu.catshare.ui.DefaultCard
 import moe.reimu.catshare.ui.theme.CatShareTheme
 import moe.reimu.catshare.utils.ServiceState
@@ -76,6 +80,18 @@ fun SettingsActivityContent() {
     var autoShutdownModeValue by remember { mutableIntStateOf(settings.autoShutdownMode) }
     var autoShutdownMinutesValue by remember { mutableStateOf(settings.autoShutdownMinutes.toString()) }
     var autoShutdownCountValue by remember { mutableStateOf(settings.autoShutdownCount.toString()) }
+    var isIgnoringBatteryOptimizations by remember { mutableStateOf(context.isIgnoringBatteryOptimizations()) }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                isIgnoringBatteryOptimizations = context.isIgnoringBatteryOptimizations()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     Scaffold(topBar = {
         TopAppBar(
@@ -198,6 +214,28 @@ fun SettingsActivityContent() {
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                             )
                         }
+                    }
+                }
+            }
+            item {
+                DefaultCard(onClick = {
+                    context.requestIgnoreBatteryOptimizations()
+                }) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.battery_optimization),
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            Text(text = stringResource(R.string.battery_optimization_desc))
+                        }
+                        Switch(
+                            checked = isIgnoringBatteryOptimizations,
+                            onCheckedChange = { context.requestIgnoreBatteryOptimizations() }
+                        )
                     }
                 }
             }

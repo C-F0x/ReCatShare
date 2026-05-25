@@ -8,6 +8,8 @@ import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import moe.reimu.catshare.R
+import moe.reimu.catshare.models.LiveUpdatePriority
+import moe.reimu.catshare.models.LiveUpdateState
 
 enum class LiveStage(val progress: Int) {
     INIT(0),
@@ -21,14 +23,19 @@ enum class LiveStage(val progress: Int) {
 }
 
 object NotificationUtils {
-    const val RECEIVER_FG_CHAN_ID = "RECEIVER_FG"
-    const val SENDER_CHAN_ID = "SENDER"
-    const val RECEIVER_CHAN_ID = "RECEIVER"
+    const val RECEIVER_FG_CHAN_ID = "RECEIVER_FG_LIVE"
+    const val SENDER_CHAN_ID = "SENDER_LIVE"
+    const val RECEIVER_CHAN_ID = "RECEIVER_LIVE"
     const val OTHER_CHAN_ID = "OTHER"
 
+    const val ID_LIVE_UPDATE = 1
+
+    @Deprecated("Use ID_LIVE_UPDATE", ReplaceWith("NotificationUtils.ID_LIVE_UPDATE"))
     const val GATT_SERVER_FG_ID = 1
-    const val RECEIVER_FG_ID = 2
-    const val SENDER_FG_ID = 3
+    @Deprecated("Use ID_LIVE_UPDATE", ReplaceWith("NotificationUtils.ID_LIVE_UPDATE"))
+    const val RECEIVER_FG_ID = 1
+    @Deprecated("Use ID_LIVE_UPDATE", ReplaceWith("NotificationUtils.ID_LIVE_UPDATE"))
+    const val SENDER_FG_ID = 1
 
     fun createChannels(context: Context) {
         val manager = NotificationManagerCompat.from(context)
@@ -36,15 +43,15 @@ object NotificationUtils {
         val channels = listOf(
             NotificationChannelCompat.Builder(
                 RECEIVER_FG_CHAN_ID,
-                NotificationManagerCompat.IMPORTANCE_LOW
-            ).setName("Receiver persistent notification (can be disabled)").build(),
+                NotificationManagerCompat.IMPORTANCE_DEFAULT
+            ).setName("Receiver persistent notification").build(),
             NotificationChannelCompat.Builder(
                 SENDER_CHAN_ID,
-                NotificationManagerCompat.IMPORTANCE_HIGH
+                NotificationManagerCompat.IMPORTANCE_DEFAULT
             ).setName("Sending files").build(),
             NotificationChannelCompat.Builder(
                 RECEIVER_CHAN_ID,
-                NotificationManagerCompat.IMPORTANCE_HIGH
+                NotificationManagerCompat.IMPORTANCE_DEFAULT
             ).setName("Receiving files").build(),
             NotificationChannelCompat.Builder(
                 OTHER_CHAN_ID,
@@ -53,6 +60,49 @@ object NotificationUtils {
         )
 
         manager.createNotificationChannelsCompat(channels)
+    }
+
+    fun buildNotificationFromState(context: Context, state: LiveUpdateState): Notification {
+        val channelId = state.channelId ?: RECEIVER_FG_CHAN_ID
+        val builder = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(state.smallIcon ?: R.drawable.ic_bluetooth_searching)
+            .setContentTitle(state.title)
+            .setContentText(state.content)
+            .setSubText(state.subText)
+            .setPriority(if (state.priority == LiveUpdatePriority.CRITICAL) NotificationCompat.PRIORITY_MAX else NotificationCompat.PRIORITY_DEFAULT)
+            .setOnlyAlertOnce(true)
+            .setOngoing(state.ongoing)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            .setRequestPromotedOngoing(true)
+
+        if (state.progress >= 0 || state.indeterminate) {
+            builder.setProgress(100, state.progress, state.indeterminate)
+            builder.setCategory(NotificationCompat.CATEGORY_PROGRESS)
+        } else {
+            builder.setCategory(NotificationCompat.CATEGORY_SERVICE)
+        }
+
+        state.shortCriticalText?.let {
+            builder.setShortCriticalText(it.take(7))
+        }
+
+        if (state.usesChronometer) {
+            builder.setWhen(state.whenTime)
+            builder.setUsesChronometer(true)
+            if (Build.VERSION.SDK_INT >= 31) {
+                builder.setChronometerCountDown(state.chronometerCountDown)
+            }
+        }
+
+        state.cancelIntent?.let {
+            builder.addAction(R.drawable.ic_close, context.getString(android.R.string.cancel), it)
+        }
+
+        return builder.build()
+    }
+
+    fun getCurrentLiveNotification(context: Context): Notification {
+        return buildNotificationFromState(context, LiveUpdateCoordinator.state.value)
     }
 
     fun getLiveNotificationBuilder(

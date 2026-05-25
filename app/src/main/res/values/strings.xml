@@ -82,4 +82,7 @@
     <string name="done">Done</string>
     <string name="response_waiting">Now Waiting…</string>
     <string name="auth_waiting">Waiting for Confirm…</string>
+    <string name="battery_optimization">Battery Optimization</string>
+    <string name="battery_optimization_desc">Ensure the app runs smoothly in the background</string>
+    <string name="shizuku_not_ready">Shizuku is not active. Only CatShare can receive normally.</string>
 </resources>
