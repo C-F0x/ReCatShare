@@ -79,4 +79,8 @@
     <string name="done">完成</string>
     <string name="response_waiting">正在等待对方响应…</string>
     <string name="auth_waiting">请在设备上确认连接…</string>
+    <string name="battery_optimization">电池优化</string>
+    <string name="battery_optimization_desc">确保应用在后台稳定运行</string>
+    <string name="shizuku_not_ready">Shizuku 未激活，仅 CatShare 可正常接收</string>
+    <string name="device_brand">设备品牌</string>
 </resources>

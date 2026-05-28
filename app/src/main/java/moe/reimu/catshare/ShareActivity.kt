@@ -242,7 +242,7 @@ fun deviceScanner(): List<DiscoveredDevice> {
                 val record = result.scanRecord ?: return
                 var supports5Ghz = false
                 var deviceName: String? = null
-                var brandId: Byte? = null
+                var brandId: Int? = null
                 var senderId: String? = null
 
                 for ((uuid, data) in record.serviceData.entries) {
@@ -254,7 +254,7 @@ fun deviceScanner(): List<DiscoveredDevice> {
                             buf.putLong(uuid.uuid.leastSignificantBits)
                             val arr = buf.array()
                             supports5Ghz = arr[2].toInt() == 1
-                            brandId = arr[3]
+                            brandId = DeviceUtils.bleByteToBrandId(arr[3])
                         }
 
                         27 -> {

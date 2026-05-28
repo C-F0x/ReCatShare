@@ -226,12 +226,15 @@ class P2pSenderService : BaseP2pService() {
 
         val settings = AppSettings(this@P2pSenderService)
 
+        val brandId = DeviceUtils.getLocalBrandId()
         val taskObj =
             JSONObject()
                 .put("taskId", taskIdStr)
                 .put("id", taskIdStr)
                 .put("senderId", BleUtils.getSenderId())
                 .put("senderName", settings.deviceName)
+                .put("senderBrand", DeviceUtils.deviceNameById(brandId))
+                .put("senderBrandId", brandId)
                 .put("fileName", task.files.first().name)
                 .put("mimeType", mimeType)
                 .put("fileCount", fileCount)
@@ -285,7 +288,7 @@ class P2pSenderService : BaseP2pService() {
                                     ?: throw IllegalArgumentException("Invalid frame type")
                                 val message = WebSocketMessage.fromText(rawMessage.readText())
                                     ?: throw IllegalArgumentException("Failed to parse message")
-                                Log.d(TAG, "Incoming message: $message")
+                                Log.d("PROTOCOL_PROBE:WS_FRAME", "Incoming: $message")
 
                                 when (message.type) {
                                     "action" -> {
@@ -302,6 +305,7 @@ class P2pSenderService : BaseP2pService() {
                                         val ackMsg = WebSocketMessage(
                                             "ack", message.id, message.name, null
                                         )
+                                        Log.d("PROTOCOL_PROBE:WS_FRAME", "Sending Ack: ${ackMsg.toText()}")
                                         send(Frame.Text(ackMsg.toText()))
                                     }
 
@@ -323,27 +327,22 @@ class P2pSenderService : BaseP2pService() {
                         }
                     }
 
-                    send(
-                        Frame.Text(
-                            WebSocketMessage(
-                                "action",
-                                0,
-                                "versionNegotiation",
-                                JSONObject()
-                                    .put("version", 1)
-                                    .put("versions", listOf(1))
-                            ).toText()
-                        )
+                    val vnMsg = WebSocketMessage(
+                        "action",
+                        0,
+                        "versionNegotiation",
+                        JSONObject()
+                            .put("version", 1)
+                            .put("versions", listOf(1))
                     )
+                    Log.d("PROTOCOL_PROBE:WS_FRAME", "Sending VN: ${vnMsg.toText()}")
+                    send(Frame.Text(vnMsg.toText()))
                     versionNegotiationFuture.await()
                     updateStage(task.id, task.device.name, LiveStage.HANDSHAKE)
-                    send(
-                        Frame.Text(
-                            WebSocketMessage(
-                                "action", 1, "sendRequest", taskObj
-                            ).toText()
-                        )
-                    )
+                    
+                    val srMsg = WebSocketMessage("action", 1, "sendRequest", taskObj)
+                    Log.d("PROTOCOL_PROBE:WS_FRAME", "Sending SR: ${srMsg.toText()}")
+                    send(Frame.Text(srMsg.toText()))
                     handshakeCompleteFuture.complete(Unit)
 
                     wsCloseFuture.await()

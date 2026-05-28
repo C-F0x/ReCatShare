@@ -65,6 +65,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.android.material.progressindicator.CircularProgressIndicator
 import moe.reimu.catshare.services.GattServerService
 import moe.reimu.catshare.ui.DefaultCard
@@ -158,7 +159,11 @@ fun MainActivityContent() {
     val context = LocalContext.current
     val settings = remember { AppSettings(context) }
     var autoShutdownMode by remember { mutableIntStateOf(settings.autoShutdownMode) }
-    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    var shizukuGranted by remember { mutableStateOf(false) }
+    var shizukuAvailable by remember { mutableStateOf(false) }
+    val shizukuReady = shizukuAvailable && shizukuGranted
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -202,9 +207,6 @@ fun MainActivityContent() {
     val localMacAddressGranted = remember {
         context.checkSelfPermission("android.permission.LOCAL_MAC_ADDRESS") == PackageManager.PERMISSION_GRANTED
     }
-
-    var shizukuGranted by remember { mutableStateOf(false) }
-    var shizukuAvailable by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
         val permissionListener = Shizuku.OnRequestPermissionResultListener { _, grantResult ->
@@ -260,7 +262,14 @@ fun MainActivityContent() {
         ) {
             item {
                 DefaultCard(
-                    onClick = { if (!isBusy) pickFilesLauncher.launch() }
+                    onClick = { 
+                        if (!isBusy) {
+                            if (!shizukuReady) {
+                                Toast.makeText(context, R.string.shizuku_not_ready, Toast.LENGTH_LONG).show()
+                            }
+                            pickFilesLauncher.launch() 
+                        }
+                    }
                 ) {
                     Row(
                         modifier = Modifier

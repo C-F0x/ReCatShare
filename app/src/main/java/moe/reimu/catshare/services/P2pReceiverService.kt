@@ -405,8 +405,11 @@ class P2pReceiverService : BaseP2pService() {
 
                     val taskId = sendRequestPayload.optString("taskId", sendRequestPayload.optString("id"))
                     val senderName = sendRequestPayload.getString("senderName")
+                    val senderBrand = sendRequestPayload.optString("senderBrand", "Unknown")
+                    val senderDisplayName = "$senderName ($senderBrand)"
+                    Log.d("PROTOCOL_PROBE:WS_FRAME", "Sender Info: $senderDisplayName")
 
-                    updateStage(localTaskId, senderName, LiveStage.HANDSHAKE)
+                    updateStage(localTaskId, senderDisplayName, LiveStage.HANDSHAKE)
 
                     val totalSize = sendRequestPayload.getLong("totalSize")
                     val fileCount = sendRequestPayload.getInt("fileCount")
@@ -455,10 +458,10 @@ class P2pReceiverService : BaseP2pService() {
 
                         val progress = ProgressCounter(totalSize) { total, processed ->
                             val percent = (100.0 * processed / total).toInt()
-                            updateStage(localTaskId, senderName, LiveStage.TRANSFERRING, percent)
+                            updateStage(localTaskId, senderDisplayName, LiveStage.TRANSFERRING, percent)
                         }
 
-                        updateStage(localTaskId, senderName, LiveStage.FINALIZING)
+                        updateStage(localTaskId, senderDisplayName, LiveStage.FINALIZING)
 
                         ZipInputStream(ist).use { zipStream ->
                             saveArchive(zipStream, progress)
@@ -486,7 +489,7 @@ class P2pReceiverService : BaseP2pService() {
                             val message = WebSocketMessage.fromText(text)
                                 ?: throw IllegalArgumentException("Failed to parse message")
 
-                            Log.d(TAG, "WS message: $message")
+                            Log.d("PROTOCOL_PROBE:WS_FRAME", "Incoming: $message")
 
                             if (message.type != "action") {
                                 return@onReceive true
@@ -524,6 +527,7 @@ class P2pReceiverService : BaseP2pService() {
                             }
 
                             val ack = WebSocketMessage("ack", message.id, message.name, r)
+                            Log.d("PROTOCOL_PROBE:WS_FRAME", "Sending Ack: ${ack.toText()}")
                             wsSession.send(Frame.Text(ack.toText()))
                             true
                         }

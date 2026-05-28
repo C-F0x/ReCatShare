@@ -44,4 +44,28 @@ class AppSettings(private val context: Context) {
         set(value) {
             prefs.edit { putInt("autoShutdownCount", value) }
         }
+
+    var brandId: Int
+        get() = prefs.getInt("brandId", -1)
+        set(value) {
+            prefs.edit { putInt("brandId", value) }
+        }
+
+    var customBrandId: Int
+        get() = prefs.getInt("customBrandId", 0)
+        set(value) {
+            prefs.edit { putInt("customBrandId", value) }
+        }
+
+    var devMode: Boolean
+        get() = prefs.getBoolean("devMode", false)
+        set(value) {
+            prefs.edit { putBoolean("devMode", value) }
+        }
+
+    var overwriteBrandId: Boolean
+        get() = prefs.getBoolean("overwriteBrandId", false)
+        set(value) {
+            prefs.edit { putBoolean("overwriteBrandId", value) }
+        }
 }

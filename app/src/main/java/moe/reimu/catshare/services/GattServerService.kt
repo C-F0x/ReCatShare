@@ -1,7 +1,6 @@
 package moe.reimu.catshare.services
 
 import android.annotation.SuppressLint
-import android.app.Notification
 import android.app.PendingIntent
 import android.app.Service
 import android.bluetooth.BluetoothDevice
@@ -20,7 +19,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
-import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -32,19 +30,18 @@ import moe.reimu.catshare.BleSecurity
 import moe.reimu.catshare.BuildConfig
 import moe.reimu.catshare.R
 import moe.reimu.catshare.models.DeviceInfo
+import moe.reimu.catshare.models.LiveUpdatePriority
+import moe.reimu.catshare.models.LiveUpdateState
 import moe.reimu.catshare.models.P2pInfo
 import moe.reimu.catshare.utils.BleUtils
+import moe.reimu.catshare.utils.DeviceUtils
 import moe.reimu.catshare.utils.JsonWithUnknownKeys
-import moe.reimu.catshare.utils.LiveStage
+import moe.reimu.catshare.utils.LiveUpdateCoordinator
 import moe.reimu.catshare.utils.NotificationUtils
 import moe.reimu.catshare.utils.ServiceState
 import moe.reimu.catshare.utils.ShizukuUtils
-import moe.reimu.catshare.models.LiveUpdatePriority
-import moe.reimu.catshare.models.LiveUpdateState
-import moe.reimu.catshare.utils.LiveUpdateCoordinator
 import moe.reimu.catshare.utils.checkBluetoothPermissions
 import moe.reimu.catshare.utils.registerInternalBroadcastReceiver
-import java.util.Arrays
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.max
 import kotlin.math.min
@@ -263,6 +260,8 @@ class GattServerService : Service() {
             }
 
             var p2pInfo: P2pInfo = JsonWithUnknownKeys.decodeFromString(data.decodeToString())
+            Log.d("PROTOCOL_PROBE:BLE_HANDSHAKE", "Received Raw P2P Info: ${data.decodeToString()}")
+            
             val ecKey = p2pInfo.key
             if (ecKey != null) {
                 val cipher = BleSecurity.deriveSessionKey(ecKey)
@@ -275,6 +274,7 @@ class GattServerService : Service() {
                     key = null,
                     catShare = BuildConfig.VERSION_CODE,
                 )
+                Log.d("PROTOCOL_PROBE:BLE_HANDSHAKE", "Decrypted P2P Info: $p2pInfo")
             }
 
             LiveUpdateCoordinator.clearState("GATT")
@@ -352,16 +352,29 @@ class GattServerService : Service() {
     fun startAdv() {
         val advertiser = btAdvertiser ?: return
 
+        val brandId = DeviceUtils.getLocalBrandId()
+        val bleBrandId = if (brandId == 114514) 114 else brandId
+        val supports5Ghz = 1 // Assume true for now
+        
+        // Ensure values are within byte range and masked to prevent String.format overflow
+        val b1 = supports5Ghz and 0xFF
+        val b2 = bleBrandId and 0xFF
+
         val advData = AdvertiseData.Builder().apply {
             addServiceUuid(ParcelUuid(BleUtils.ADV_SERVICE_UUID))
+            // The scanner expects brand info at index 2 and 3 of the 16-byte UUID array
+            // Index 0 and 1 must be 0000 to be recognized as a 16-bit UUID and save space
             addServiceData(
                 ParcelUuid.fromString(
                     String.format(
-                        "000001ff-0000-1000-8000-00805f9b34fb",
-                        java.lang.Byte.valueOf(0),
-                        java.lang.Byte.valueOf(0),
+                        "0000%02x%02x-0000-1000-8000-00805f9b34fb",
+                        b1, b2
                     )
-                ), Arrays.copyOfRange(BleUtils.RANDOM_DATA, 0, 6)
+                ), 
+                ByteArray(6).apply {
+                    // Scanner expects data size 6
+                    System.arraycopy(BleUtils.RANDOM_DATA, 0, this, 0, min(BleUtils.RANDOM_DATA.size, 6))
+                }
             )
         }.build()
         val scanRespData = AdvertiseData.Builder().apply {
