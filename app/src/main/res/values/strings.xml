@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name" translatable="false">CatShare</string>
+    <string name="app_name" translatable="false">ReCatShare</string>
     <string name="send">Send</string>
     <string name="discoverable">Discoverable</string>
     <string name="discoverable_desc">Others may send files to you</string>
@@ -25,7 +25,7 @@
         <item quantity="other">Received %d files before interruption, tap to view</item>
     </plurals>
     <string name="stop">Stop</string>
-    <string name="noti_receiver_title">CatShare Receiver Service</string>
+    <string name="noti_receiver_title">ReCatShare Receiver Service</string>
     <string name="bluetooth_disabled">Bluetooth is disabled or unavailable</string>
     <string name="receiving">Receiving</string>
     <string name="recv_ok">Received completed</string>
@@ -84,6 +84,6 @@
     <string name="auth_waiting">Waiting for Confirm…</string>
     <string name="battery_optimization">Battery Optimization</string>
     <string name="battery_optimization_desc">Ensure the app runs smoothly in the background</string>
-    <string name="shizuku_not_ready">Shizuku is not active. Only CatShare can receive normally.</string>
+    <string name="shizuku_not_ready">Shizuku is not active. Only ReCatShare can receive normally.</string>
     <string name="device_brand">Device Brand</string>
 </resources>

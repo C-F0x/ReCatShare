@@ -62,7 +62,6 @@ import moe.reimu.catshare.ui.theme.CatShareTheme
 import moe.reimu.catshare.utils.DeviceUtils
 import moe.reimu.catshare.utils.ServiceState
 import moe.reimu.catshare.utils.isIgnoringBatteryOptimizations
-import moe.reimu.catshare.utils.requestIgnoreBatteryOptimizations
 import java.io.File
 
 class SettingsActivity : ComponentActivity() {
@@ -291,7 +290,7 @@ fun SettingsActivityContent() {
                     }
                 }
             }
-            item {
+            /*item {
                 DefaultCard(onClick = {
                     context.requestIgnoreBatteryOptimizations()
                 }) {
@@ -312,7 +311,7 @@ fun SettingsActivityContent() {
                         )
                     }
                 }
-            }
+            }*/
             item {
                 DefaultCard(onClick = {
                     Thread {

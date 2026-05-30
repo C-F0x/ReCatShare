@@ -20,13 +20,13 @@ fun Context.isIgnoringBatteryOptimizations(): Boolean {
     return pm.isIgnoringBatteryOptimizations(packageName)
 }
 
-fun Context.requestIgnoreBatteryOptimizations() {
+/*fun Context.requestIgnoreBatteryOptimizations() {
     val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
         data = Uri.parse("package:$packageName")
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
     startActivity(intent)
-}
+}*/
 
 fun Context.checkBluetoothPermissions(): Boolean {
     if (Build.VERSION.SDK_INT <= 32) {

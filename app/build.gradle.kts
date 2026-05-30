@@ -1,4 +1,7 @@
+
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Properties
 
 plugins {
@@ -6,6 +9,14 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.kotlin.parcelize)
+}
+
+fun getBuildVersionName(): String {
+    return SimpleDateFormat("yy.MM.00").format(Date())
+}
+
+fun getBuildVersionCode(): Int {
+    return SimpleDateFormat("yyMM00").format(Date()).toInt()
 }
 
 android {
@@ -16,8 +27,8 @@ android {
         applicationId = "moe.reimu.catshare"
         minSdk = 31
         targetSdk = 36
-        versionCode = 7
-        versionName = "1.6"
+        versionCode = getBuildVersionCode()
+        versionName = getBuildVersionName()
     }
 
     signingConfigs {
@@ -47,8 +58,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            //isMinifyEnabled = true
+            //isShrinkResources = true
 
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -58,8 +69,6 @@ android {
             signingConfig = signingConfigs.findByName("release")
         }
         debug {
-            applicationIdSuffix = ".debug"
-            resValue("string", "app_name", "CatShare (Debug)")
         }
     }
     compileOptions {
@@ -98,7 +107,7 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.compose.material.icons.extended)
 
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("no.nordicsemi.android.kotlin.ble:client:1.3.1")
 
     implementation(libs.ktor.client.core)
