@@ -11,11 +11,11 @@ plugins {
 }
 
 fun getBuildVersionName(): String {
-    return SimpleDateFormat("yy.MM.00").format(Date())
+    return SimpleDateFormat("yy.MM.10").format(Date())
 }
 
 fun getBuildVersionCode(): Int {
-    return SimpleDateFormat("yyMM00").format(Date()).toInt()
+    return SimpleDateFormat("yyMM10").format(Date()).toInt()
 }
 
 android {
@@ -95,6 +95,7 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
     implementation(libs.androidx.activity)
+    implementation("androidx.documentfile:documentfile:1.1.0")
 
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)

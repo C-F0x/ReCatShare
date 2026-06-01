@@ -42,7 +42,7 @@ object DeviceUtils {
         val settings = AppSettings(MyApplication.getInstance())
         
         // Developer Overwrite Priority
-        if (settings.devMode && settings.overwriteBrandId) {
+        if (settings.overwriteBrandId) {
             return settings.customBrandId
         }
         

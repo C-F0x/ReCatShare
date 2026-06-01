@@ -96,7 +96,15 @@ object NotificationUtils {
         }
 
         state.cancelIntent?.let {
-            builder.addAction(R.drawable.ic_close, context.getString(android.R.string.cancel), it)
+            builder.addAction(R.drawable.ic_close, state.cancelLabel ?: context.getString(android.R.string.cancel), it)
+        }
+
+        state.acceptIntent?.let {
+            builder.addAction(R.drawable.ic_done, context.getString(R.string.accept), it)
+        }
+
+        state.rejectIntent?.let {
+            builder.addAction(R.drawable.ic_close, context.getString(R.string.reject), it)
         }
 
         return builder.build()

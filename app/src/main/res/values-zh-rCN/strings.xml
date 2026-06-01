@@ -13,6 +13,7 @@
     <string name="preparing_transmission">准备文件传输</string>
     <string name="accept">接受</string>
     <string name="reject">拒绝</string>
+    <string name="ignore">忽略</string>
     <string name="noti_recv_interrupted">文件接收已中断</string>
     <string name="preparing">正在准备</string>
     <plurals name="noti_complete">
@@ -68,7 +69,10 @@
     <string name="auto_shutdown_off">关闭</string>
     <string name="auto_shutdown_timed">计时</string>
     <string name="auto_shutdown_count">计次</string>
-    <string name="auto_shutdown_minutes_label">关闭前等待时间</string>
+    <string name="auto_shutdown_minutes_label">自动关闭时间</string>
+    <string name="unit_h">时</string>
+    <string name="unit_m">分</string>
+    <string name="unit_s">秒</string>
     <string name="auto_shutdown_count_label">接收次数上限</string>
     <string name="auto_shutdown_count_unit">次</string>
     <string name="time_remaining">剩余时间</string>
@@ -83,4 +87,7 @@
     <string name="battery_optimization_desc">确保应用在后台稳定运行</string>
     <string name="shizuku_not_ready">Shizuku 未激活，仅 ReCatShare 可正常接收</string>
     <string name="device_brand">设备品牌</string>
+    <string name="download_path">下载路径</string>
+    <string name="choose_download_path">选择下载目录</string>
+    <string name="default_path">默认 (Downloads/ReCatShare)</string>
 </resources>

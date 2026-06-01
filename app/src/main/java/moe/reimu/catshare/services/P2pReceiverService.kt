@@ -12,6 +12,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.graphics.BitmapFactory
+import android.net.Uri
 import android.net.wifi.p2p.WifiP2pConfig
 import android.net.wifi.p2p.WifiP2pGroup
 import android.net.wifi.p2p.WifiP2pInfo
@@ -30,6 +31,7 @@ import androidx.annotation.DrawableRes
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.net.toUri
+import androidx.documentfile.provider.DocumentFile
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.websocket.WebSockets
@@ -132,6 +134,21 @@ class P2pReceiverService : BaseP2pService() {
             shortCriticalText = if (stage == LiveStage.TRANSFERRING) "$progress%" else content.take(7),
             priority = LiveUpdatePriority.CRITICAL,
             cancelIntent = cancelIntent,
+            cancelLabel = if (stage == LiveStage.WAITING_AUTH) getString(R.string.ignore) else null,
+            acceptIntent = if (stage == LiveStage.WAITING_AUTH) {
+                PendingIntent.getBroadcast(
+                    this, taskId,
+                    Intent(ACTION_ACCEPTED).apply { putExtra("taskId", taskId) },
+                    PendingIntent.FLAG_IMMUTABLE
+                )
+            } else null,
+            rejectIntent = if (stage == LiveStage.WAITING_AUTH) {
+                PendingIntent.getBroadcast(
+                    this, taskId,
+                    Intent(ACTION_DISMISSED).apply { putExtra("taskId", taskId) },
+                    PendingIntent.FLAG_IMMUTABLE
+                )
+            } else null,
             channelId = NotificationUtils.RECEIVER_CHAN_ID,
             smallIcon = if (stage == LiveStage.COMPLETED) R.drawable.ic_done else R.drawable.ic_downloading
         )
@@ -564,6 +581,12 @@ class P2pReceiverService : BaseP2pService() {
             dalvik.system.ZipPathValidator.setCallback(ZipPathValidatorCallback)
         }
 
+        val settings = AppSettings(this)
+        val customUriStr = settings.downloadUri
+        val customDir = if (customUriStr != null) {
+            DocumentFile.fromTreeUri(this, Uri.parse(customUriStr))
+        } else null
+
         while (true) {
             val entry = zipStream.nextEntry ?: break
             if (entry.isDirectory) {
@@ -573,13 +596,24 @@ class P2pReceiverService : BaseP2pService() {
             Log.d(TAG, "Entry ${entry.name}")
 
             val entryFile = File(entry.name)
-            val values = createContentValues(entryFile)
-
+            
             try {
-                val uri = contentResolver.insert(
-                    MediaStore.Downloads.EXTERNAL_CONTENT_URI, values
-                )
-                    ?: throw RuntimeException("Failed to write ${entryFile.name} to media store")
+                val (uri, mimeType) = if (customDir != null && customDir.exists()) {
+                    val extension = entryFile.extension
+                    val mime = if (extension.isNotEmpty()) {
+                        MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) ?: "application/octet-stream"
+                    } else "application/octet-stream"
+                    
+                    val doc = customDir.createFile(mime, entryFile.name)
+                        ?: throw RuntimeException("Failed to create file ${entryFile.name} in custom dir")
+                    Pair(doc.uri, mime)
+                } else {
+                    val values = createContentValues(entryFile)
+                    val insertedUri = contentResolver.insert(
+                        MediaStore.Downloads.EXTERNAL_CONTENT_URI, values
+                    ) ?: throw RuntimeException("Failed to write ${entryFile.name} to media store")
+                    Pair(insertedUri, values.getAsString(MediaStore.Downloads.MIME_TYPE))
+                }
 
                 try {
                     val os = contentResolver.openOutputStream(uri)
@@ -603,11 +637,13 @@ class P2pReceiverService : BaseP2pService() {
                         ReceivedFile(
                             entryFile.name,
                             uri,
-                            values.getAsString(MediaStore.Downloads.MIME_TYPE)
+                            mimeType
                         )
                     )
                 } catch (e: Throwable) {
-                    contentResolver.delete(uri, null, null)
+                    if (customDir == null) {
+                        contentResolver.delete(uri, null, null)
+                    }
                     throw e
                 }
             } catch (e: Throwable) {

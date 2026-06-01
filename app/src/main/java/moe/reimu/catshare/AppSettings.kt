@@ -33,14 +33,20 @@ class AppSettings(private val context: Context) {
             prefs.edit { putInt("autoShutdownMode", value) }
         }
 
-    var autoShutdownMinutes: Int
-        get() = prefs.getInt("autoShutdownMinutes", 30)
+    var autoShutdownSeconds: Int
+        get() = prefs.getInt("autoShutdownSeconds", 11 * 3600 + 45 * 60 + 14)
         set(value) {
-            prefs.edit { putInt("autoShutdownMinutes", value) }
+            prefs.edit { putInt("autoShutdownSeconds", value) }
+        }
+
+    var downloadUri: String?
+        get() = prefs.getString("downloadUri", null)
+        set(value) {
+            prefs.edit { putString("downloadUri", value) }
         }
 
     var autoShutdownCount: Int
-        get() = prefs.getInt("autoShutdownCount", 10)
+        get() = prefs.getInt("autoShutdownCount", 114514)
         set(value) {
             prefs.edit { putInt("autoShutdownCount", value) }
         }

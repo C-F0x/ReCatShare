@@ -1,6 +1,7 @@
 package moe.reimu.catshare
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -8,6 +9,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.LocalActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
@@ -89,7 +91,14 @@ fun SettingsActivityContent() {
     val originalShutdownMode = remember { settings.autoShutdownMode }
     val originalBrandId = remember { settings.brandId }
     var autoShutdownModeValue by remember { mutableIntStateOf(settings.autoShutdownMode) }
-    var autoShutdownMinutesValue by remember { mutableStateOf(settings.autoShutdownMinutes.toString()) }
+    
+    val initialSeconds = settings.autoShutdownSeconds
+    var hoursValue by remember { mutableStateOf((initialSeconds / 3600).toString()) }
+    var minutesValue by remember { mutableStateOf(((initialSeconds % 3600) / 60).toString()) }
+    var secondsValue by remember { mutableStateOf((initialSeconds % 60).toString()) }
+
+    var downloadUriValue by remember { mutableStateOf(settings.downloadUri) }
+
     var autoShutdownCountValue by remember { mutableStateOf(settings.autoShutdownCount.toString()) }
     
     // Developer Mode states
@@ -127,8 +136,17 @@ fun SettingsActivityContent() {
                     settings.devMode = devModeVisible
                     settings.overwriteBrandId = overwriteBrandIdValue
                     customBrandIdValue.toIntOrNull()?.let { settings.customBrandId = it }
-                    autoShutdownMinutesValue.toIntOrNull()?.let { if (it > 0) settings.autoShutdownMinutes = it }
-                    autoShutdownCountValue.toIntOrNull()?.let { if (it > 0) settings.autoShutdownCount = it }
+                    
+                    val h = hoursValue.toIntOrNull() ?: 0
+                    val m = minutesValue.toIntOrNull() ?: 0
+                    val s = secondsValue.toIntOrNull() ?: 0
+                    val totalSeconds = (h * 3600) + (m * 60) + s
+                    settings.autoShutdownSeconds = if (totalSeconds > 0) totalSeconds else (11 * 3600 + 45 * 60 + 14)
+                    
+                    settings.downloadUri = downloadUriValue
+
+                    val count = autoShutdownCountValue.toIntOrNull() ?: 0
+                    settings.autoShutdownCount = if (count > 0) count else 114514
 
                     if (autoShutdownModeValue != originalShutdownMode || brandIdValue != originalBrandId || overwriteBrandIdValue) {
                         context.sendBroadcast(ServiceState.getStopIntent())
@@ -160,6 +178,40 @@ fun SettingsActivityContent() {
             }
 
             item {
+                val safLauncher = rememberLauncherForActivityResult(
+                    androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()
+                ) { uri ->
+                    uri?.let {
+                        context.contentResolver.takePersistableUriPermission(
+                            it,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                        )
+                        downloadUriValue = it.toString()
+                    }
+                }
+
+                DefaultCard(onClick = {
+                    safLauncher.launch(null)
+                }) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = stringResource(R.string.download_path),
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Text(
+                            text = if (downloadUriValue != null) {
+                                Uri.parse(downloadUriValue).path ?: downloadUriValue!!
+                            } else {
+                                stringResource(R.string.default_path)
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            item {
                 DefaultCard {
                     Column(modifier = Modifier.padding(16.dp)) {
                         OutlinedTextField(
@@ -172,74 +224,6 @@ fun SettingsActivityContent() {
                 }
             }
 
-            // Device Brand Selector
-            item {
-                val isOverwritten = devModeVisible && overwriteBrandIdValue
-                DefaultCard {
-                    Column(
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .alpha(if (isOverwritten) 0.5f else 1f),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = stringResource(R.string.device_brand),
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            userScrollEnabled = !isOverwritten
-                        ) {
-                            items(DeviceUtils.getBrandList()) { (id, name) ->
-                                FilterChip(
-                                    selected = brandIdValue == id,
-                                    onClick = { if (!isOverwritten) brandIdValue = id },
-                                    label = { Text(name) },
-                                    enabled = !isOverwritten
-                                )
-                            }
-                        }
-                        if (isOverwritten) {
-                            Text(
-                                text = "Controlled by Developer Option",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                }
-            }
-
-            item {
-                DefaultCard {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = stringResource(R.string.verbose_name),
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        Spacer(modifier = Modifier.weight(1.0f))
-                        Switch(checked = verboseValue, onCheckedChange = { verboseValue = it })
-                    }
-                }
-            }
-            item {
-                DefaultCard {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = stringResource(R.string.auto_accept_name),
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        Spacer(modifier = Modifier.weight(1.0f))
-                        Switch(checked = autoAcceptValue, onCheckedChange = { autoAcceptValue = it })
-                    }
-                }
-            }
             item {
                 DefaultCard {
                     Column(
@@ -268,14 +252,40 @@ fun SettingsActivityContent() {
                             )
                         }
                         if (autoShutdownModeValue == 1) {
-                            OutlinedTextField(
-                                value = autoShutdownMinutesValue,
-                                onValueChange = { autoShutdownMinutesValue = it.filter { c -> c.isDigit() } },
-                                label = { Text(stringResource(R.string.auto_shutdown_minutes_label)) },
-                                suffix = { Text("min") },
+                            Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                            )
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = hoursValue,
+                                    onValueChange = { hoursValue = it.filter { c -> c.isDigit() } },
+                                    label = { Text(stringResource(R.string.unit_h)) },
+                                    modifier = Modifier.weight(1f),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                )
+                                OutlinedTextField(
+                                    value = minutesValue,
+                                    onValueChange = { 
+                                        val filtered = it.filter { c -> c.isDigit() }
+                                        val num = filtered.toIntOrNull() ?: 0
+                                        if (num < 60) minutesValue = filtered
+                                    },
+                                    label = { Text(stringResource(R.string.unit_m)) },
+                                    modifier = Modifier.weight(1f),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                )
+                                OutlinedTextField(
+                                    value = secondsValue,
+                                    onValueChange = { 
+                                        val filtered = it.filter { c -> c.isDigit() }
+                                        val num = filtered.toIntOrNull() ?: 0
+                                        if (num < 60) secondsValue = filtered
+                                    },
+                                    label = { Text(stringResource(R.string.unit_s)) },
+                                    modifier = Modifier.weight(1f),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                )
+                            }
                         }
                         if (autoShutdownModeValue == 2) {
                             OutlinedTextField(
@@ -312,6 +322,58 @@ fun SettingsActivityContent() {
                     }
                 }
             }*/
+            item {
+                DefaultCard {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.device_brand),
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        val brands = remember { DeviceUtils.getBrandList() }
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .alpha(if (overwriteBrandIdValue) 0.5f else 1f)
+                        ) {
+                            items(brands) { (id, name) ->
+                                FilterChip(
+                                    selected = brandIdValue == id,
+                                    onClick = { brandIdValue = id },
+                                    label = { Text(name) },
+                                    enabled = !overwriteBrandIdValue
+                                )
+                            }
+                        }
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "Overwrite with custom BrandID",
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Switch(
+                                checked = overwriteBrandIdValue,
+                                onCheckedChange = { overwriteBrandIdValue = it }
+                            )
+                        }
+
+                        AnimatedVisibility(visible = overwriteBrandIdValue) {
+                            OutlinedTextField(
+                                value = customBrandIdValue,
+                                onValueChange = { customBrandIdValue = it.filter { c -> c.isDigit() } },
+                                label = { Text("Custom Brand ID") },
+                                modifier = Modifier.fillMaxWidth(),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                            )
+                        }
+                    }
+                }
+            }
+
             item {
                 DefaultCard(onClick = {
                     Thread {
@@ -397,28 +459,11 @@ fun SettingsActivityContent() {
                                         .padding(top = 8.dp),
                                     verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    // Scrollable content inside the block
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = "Overwrite with custom BrandID",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                        Switch(
-                                            checked = overwriteBrandIdValue,
-                                            onCheckedChange = { overwriteBrandIdValue = it }
-                                        )
-                                    }
-                                    
-                                    AnimatedVisibility(visible = overwriteBrandIdValue) {
-                                        OutlinedTextField(
-                                            value = customBrandIdValue,
-                                            onValueChange = { customBrandIdValue = it.filter { c -> c.isDigit() } },
-                                            label = { Text("Custom Brand ID") },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                                        )
-                                    }
+                                    // Other dev options could go here
+                                    Text(
+                                        text = "No other dev options available",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
                                 }
                             }
                         }

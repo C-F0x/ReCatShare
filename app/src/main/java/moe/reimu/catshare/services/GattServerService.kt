@@ -79,19 +79,25 @@ class GattServerService : Service() {
         var progressText = ""
         var targetWhen = 0L
 
-        if (isFinishing) {
-            progress = 1f
-            progressText = getString(R.string.done)
-        } else {
-            when (settings.autoShutdownMode) {
+        when (settings.autoShutdownMode) {
                 1 -> {
-                    val totalMs = settings.autoShutdownMinutes * 60 * 1000L
+                    val totalMs = settings.autoShutdownSeconds * 1000L
                     val elapsedMs = System.currentTimeMillis() - startTime
                     val remainingMs = max(0L, totalMs - elapsedMs)
                     progress = (elapsedMs.toFloat() / totalMs).coerceIn(0f, 1f)
-                    val remainingMin = remainingMs / 1000 / 60
-                    val remainingSec = (remainingMs / 1000) % 60
-                    progressText = String.format(java.util.Locale.US, "%02d:%02d", remainingMin, remainingSec)
+                    
+                    // Add 999ms offset to make it feel like "ceiling" division
+                    // So 20m 20s (20000ms) shows as 20:20 at the very start
+                    val displayRemainingMs = if (remainingMs > 0) remainingMs + 999 else 0
+                    val remainingTotalSec = displayRemainingMs / 1000
+                    val h = remainingTotalSec / 3600
+                    val m = (remainingTotalSec % 3600) / 60
+                    val s = remainingTotalSec % 60
+                    progressText = if (h > 0) {
+                        String.format(java.util.Locale.US, "%02d:%02d:%02d", h, m, s)
+                    } else {
+                        String.format(java.util.Locale.US, "%02d:%02d", m, s)
+                    }
                     targetWhen = startTime + totalMs
 
                     if (remainingMs <= 0) {
@@ -105,7 +111,6 @@ class GattServerService : Service() {
                     progressText = "${max(0, total - receiveCount)} ${getString(R.string.auto_shutdown_count_unit)}"
                 }
             }
-        }
 
         sendBroadcast(ServiceState.getUpdateIntent(true, progress, progressText, isFinishing))
 
@@ -142,8 +147,7 @@ class GattServerService : Service() {
         if (isFinishing) return
         isFinishing = true
         shutdownHandler.removeCallbacks(updateTicker)
-        broadcastState()
-        shutdownHandler.postDelayed({ stopSelf() }, 10000)
+        stopSelf()
     }
 
     private val internalReceiver = object : BroadcastReceiver() {

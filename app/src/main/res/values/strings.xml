@@ -14,6 +14,7 @@
     <string name="preparing_transmission">Preparing transmission</string>
     <string name="accept">Accept</string>
     <string name="reject">Reject</string>
+    <string name="ignore">Ignore</string>
     <string name="noti_recv_interrupted">Receiving process has been interrupted</string>
     <string name="preparing">Preparing</string>
     <plurals name="noti_complete">
@@ -71,7 +72,10 @@
     <string name="auto_shutdown_off">Shutdown</string>
     <string name="auto_shutdown_timed">Timer</string>
     <string name="auto_shutdown_count">Counter</string>
-    <string name="auto_shutdown_minutes_label">Estimated Shut Time</string>
+    <string name="auto_shutdown_minutes_label">Wait before shutdown</string>
+    <string name="unit_h">h</string>
+    <string name="unit_m">m</string>
+    <string name="unit_s">s</string>
     <string name="auto_shutdown_count_label">Estimated Receptions Limit</string>
     <string name="auto_shutdown_count_unit">Times</string>
     <string name="time_remaining">Time Remaining</string>
@@ -86,4 +90,7 @@
     <string name="battery_optimization_desc">Ensure the app runs smoothly in the background</string>
     <string name="shizuku_not_ready">Shizuku is not active. Only ReCatShare can receive normally.</string>
     <string name="device_brand">Device Brand</string>
+    <string name="download_path">Download Path</string>
+    <string name="choose_download_path">Choose Download Path</string>
+    <string name="default_path">Default (Downloads/ReCatShare)</string>
 </resources>
