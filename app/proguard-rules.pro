@@ -134,3 +134,17 @@
 -dontwarn io.netty.pkitesting.CertificateBuilder$Algorithm
 -dontwarn io.netty.pkitesting.CertificateBuilder
 -dontwarn io.netty.pkitesting.X509Bundle
+
+# Missing classes detected in release build
+-dontwarn io.netty.internal.tcnative.SSLCredential
+-dontwarn javax.naming.ldap.LdapName
+-dontwarn javax.naming.ldap.Rdn
+-dontwarn jdk.jfr.Category
+-dontwarn jdk.jfr.DataAmount
+-dontwarn jdk.jfr.Description
+-dontwarn jdk.jfr.Enabled
+-dontwarn jdk.jfr.Event
+-dontwarn jdk.jfr.FlightRecorder
+-dontwarn jdk.jfr.Label
+-dontwarn jdk.jfr.MemoryAddress
+-dontwarn jdk.jfr.Name

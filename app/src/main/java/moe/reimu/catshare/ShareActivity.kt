@@ -7,14 +7,10 @@ import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
-import android.content.ComponentName
-import android.content.Context
 import android.content.Intent
-import android.content.ServiceConnection
 import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.Bundle
-import android.os.IBinder
 import android.os.ParcelUuid
 import android.provider.MediaStore
 import android.util.Log
@@ -50,7 +46,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
-import androidx.lifecycle.compose.LifecycleStartEffect
 import moe.reimu.catshare.models.DiscoveredDevice
 import moe.reimu.catshare.models.FileInfo
 import moe.reimu.catshare.models.TaskInfo
@@ -320,7 +315,7 @@ fun deviceScanner(): List<DiscoveredDevice> {
                 ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
 
             try {
-                scanner.startScan(filters, settings, callback)
+                scanner?.startScan(filters, settings, callback)
                 startedScanner = scanner
                 Log.d(TAG, "Started scanning")
             } catch (e: SecurityException) {
