@@ -11,11 +11,11 @@ plugins {
 }
 
 fun getBuildVersionName(): String {
-    return SimpleDateFormat("yy.MM.10").format(Date())
+    return SimpleDateFormat("yy.MM.11").format(Date())
 }
 
 fun getBuildVersionCode(): Int {
-    return SimpleDateFormat("yyMM10").format(Date()).toInt()
+    return SimpleDateFormat("yyMM11").format(Date()).toInt()
 }
 
 android {
@@ -25,7 +25,7 @@ android {
     defaultConfig {
         applicationId = "moe.reimu.catshare"
         minSdk = 31
-        targetSdk = 36
+        targetSdk = 37
         versionCode = getBuildVersionCode()
         versionName = getBuildVersionName()
     }
@@ -39,6 +39,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            matchingFallbacks += listOf()
         }
         debug {
         }
@@ -79,8 +80,8 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.compose.material.icons.extended)
 
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
-    implementation("no.nordicsemi.android.kotlin.ble:client:1.3.1")
+    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.client)
 
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)
@@ -95,7 +96,7 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
     implementation(libs.androidx.activity)
-    implementation("androidx.documentfile:documentfile:1.1.0")
+    implementation(libs.androidx.documentfile)
 
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)

@@ -491,7 +491,11 @@ fun AboutBanner(isDevMode: Boolean, onDevModeEnabled: () -> Unit) {
                 text = "C-F0x @ GitHub",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.clickable {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/C-F0x/ReCatShare/"))
+                    context.startActivity(intent)
+                }
             )
             Text(
                 text = "Builder & Developer",
