@@ -120,7 +120,7 @@ class GattServerService : Service() {
                 "${getString(R.string.discoverable_desc)}  •  $progressText" 
                 else getString(R.string.discoverable_desc),
             progress = if (settings.autoShutdownMode != 0) (progress * 100).toInt() else -1,
-            shortCriticalText = progressText.ifEmpty { null },
+            shortCriticalText = if (settings.autoShutdownMode == 2) progressText else null,
             priority = LiveUpdatePriority.STANDBY,
             cancelIntent = PendingIntent.getBroadcast(
                 this, 0, ServiceState.getStopIntent(), PendingIntent.FLAG_IMMUTABLE

@@ -94,7 +94,7 @@ class P2pSenderService : BaseP2pService() {
 
     override fun onBind(intent: Intent) = binder
 
-    private fun updateStage(taskId: Int, targetName: String, stage: LiveStage, progress: Int = 0) {
+    private fun updateStage(taskId: Int, targetName: String, stage: LiveStage, progress: Int = 0, currentFile: String? = null) {
         val cancelIntent = if (stage != LiveStage.COMPLETED) {
             PendingIntent.getBroadcast(
                 this, taskId,
@@ -107,12 +107,12 @@ class P2pSenderService : BaseP2pService() {
         } else null
 
         val content = when (stage) {
+            LiveStage.TRANSFERRING -> currentFile ?: getString(R.string.transferring_files)
             LiveStage.INIT -> getString(R.string.preparing_transmission)
             LiveStage.PREPARING -> getString(R.string.preparing_transmission)
             LiveStage.REQUESTED -> getString(R.string.response_waiting)
             LiveStage.HANDSHAKE -> getString(R.string.noti_connecting)
             LiveStage.WAITING_AUTH -> getString(R.string.auth_waiting)
-            LiveStage.TRANSFERRING -> getString(R.string.transferring_files)
             LiveStage.FINALIZING -> getString(R.string.finishing)
             LiveStage.COMPLETED -> getString(R.string.done)
         }
@@ -123,13 +123,23 @@ class P2pSenderService : BaseP2pService() {
             stage.progress
         }
 
+        val shortText = when (stage) {
+            LiveStage.TRANSFERRING -> "$progress%"
+            LiveStage.INIT, LiveStage.PREPARING -> "Prep..."
+            LiveStage.HANDSHAKE -> "Conn..."
+            LiveStage.REQUESTED, LiveStage.WAITING_AUTH -> "Wait..."
+            LiveStage.FINALIZING -> "Fin..."
+            LiveStage.COMPLETED -> "Done"
+        }
+
         val state = LiveUpdateState(
             title = getString(R.string.sending),
             content = content,
-            subText = targetName,
+            subText = if (stage == LiveStage.TRANSFERRING) "To $targetName" else targetName,
             progress = if (stage != LiveStage.COMPLETED) displayProgress else -1,
-            shortCriticalText = if (stage == LiveStage.TRANSFERRING) "$progress%" else content.take(7),
+            shortCriticalText = shortText,
             priority = LiveUpdatePriority.CRITICAL,
+            ongoing = stage != LiveStage.COMPLETED,
             cancelIntent = cancelIntent,
             channelId = NotificationUtils.SENDER_CHAN_ID,
             smallIcon = if (stage == LiveStage.COMPLETED) R.drawable.ic_done else R.drawable.ic_downloading
@@ -390,7 +400,7 @@ class P2pSenderService : BaseP2pService() {
                                         val now = System.nanoTime()
                                         if (TimeUnit.SECONDS.convert(now - lastProgressUpdate, TimeUnit.NANOSECONDS) >= 1) {
                                             val percent = (100.0 * processedSize / totalSize).toInt()
-                                            updateStage(task.id, task.device.name, LiveStage.TRANSFERRING, percent)
+                                            updateStage(task.id, task.device.name, LiveStage.TRANSFERRING, percent, rf.name)
                                             lastProgressUpdate = now
                                         }
                                     }

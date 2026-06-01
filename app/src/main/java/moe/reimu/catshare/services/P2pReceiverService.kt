@@ -67,6 +67,7 @@ import moe.reimu.catshare.models.ReceivedFile
 import moe.reimu.catshare.models.WebSocketMessage
 import moe.reimu.catshare.models.LiveUpdatePriority
 import moe.reimu.catshare.models.LiveUpdateState
+import moe.reimu.catshare.utils.DeviceUtils
 import moe.reimu.catshare.utils.LiveStage
 import moe.reimu.catshare.utils.LiveUpdateCoordinator
 import moe.reimu.catshare.utils.NotificationUtils
@@ -95,7 +96,7 @@ class P2pReceiverService : BaseP2pService() {
     private lateinit var notificationManager: NotificationManagerCompat
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
-    private fun updateStage(taskId: Int, senderName: String, stage: LiveStage, progress: Int = 0) {
+    private fun updateStage(taskId: Int, senderName: String, stage: LiveStage, progress: Int = 0, currentFile: String? = null) {
         val cancelIntent = if (stage != LiveStage.COMPLETED) {
             PendingIntent.getBroadcast(
                 this, taskId,
@@ -110,12 +111,12 @@ class P2pReceiverService : BaseP2pService() {
         }
 
         val content = when (stage) {
+            LiveStage.TRANSFERRING -> currentFile ?: getString(R.string.transferring_files)
             LiveStage.INIT -> getString(R.string.preparing_transmission)
             LiveStage.PREPARING -> getString(R.string.preparing_transmission)
             LiveStage.REQUESTED -> getString(R.string.response_waiting)
             LiveStage.HANDSHAKE -> getString(R.string.noti_connecting)
             LiveStage.WAITING_AUTH -> getString(R.string.auth_waiting)
-            LiveStage.TRANSFERRING -> getString(R.string.transferring_files)
             LiveStage.FINALIZING -> getString(R.string.finishing)
             LiveStage.COMPLETED -> getString(R.string.done)
         }
@@ -126,13 +127,23 @@ class P2pReceiverService : BaseP2pService() {
             stage.progress
         }
 
+        val shortText = when (stage) {
+            LiveStage.TRANSFERRING -> "$progress%"
+            LiveStage.INIT, LiveStage.PREPARING -> "Prep..."
+            LiveStage.HANDSHAKE -> "Conn..."
+            LiveStage.REQUESTED, LiveStage.WAITING_AUTH -> "Wait..."
+            LiveStage.FINALIZING -> "Fin..."
+            LiveStage.COMPLETED -> "Done"
+        }
+
         val state = LiveUpdateState(
             title = title,
             content = content,
-            subText = senderName,
+            subText = if (stage == LiveStage.TRANSFERRING) "From $senderName" else senderName,
             progress = if (stage != LiveStage.COMPLETED) displayProgress else -1,
-            shortCriticalText = if (stage == LiveStage.TRANSFERRING) "$progress%" else content.take(7),
+            shortCriticalText = shortText,
             priority = LiveUpdatePriority.CRITICAL,
+            ongoing = stage != LiveStage.COMPLETED,
             cancelIntent = cancelIntent,
             cancelLabel = if (stage == LiveStage.WAITING_AUTH) getString(R.string.ignore) else null,
             acceptIntent = if (stage == LiveStage.WAITING_AUTH) {
@@ -412,6 +423,8 @@ class P2pReceiverService : BaseP2pService() {
                 val sendRequestFuture = CompletableDeferred<JSONObject>()
                 val statusFuture = CompletableDeferred<Pair<Int, String>>()
 
+                var currentFileName: String? = null
+
                 val wsSession = client.webSocketSession("wss://${hostPort}/websocket")
 
                 val downloadJob = async {
@@ -422,8 +435,13 @@ class P2pReceiverService : BaseP2pService() {
 
                     val taskId = sendRequestPayload.optString("taskId", sendRequestPayload.optString("id"))
                     val senderName = sendRequestPayload.getString("senderName")
-                    val senderBrand = sendRequestPayload.optString("senderBrand", "Unknown")
-                    val senderDisplayName = "$senderName ($senderBrand)"
+                    val senderBrand = if (sendRequestPayload.has("senderBrand")) {
+                        sendRequestPayload.getString("senderBrand")
+                    } else {
+                        val brandId = sendRequestPayload.optInt("senderBrandId", -1)
+                        if (brandId != -1) DeviceUtils.deviceNameById(brandId) else getString(R.string.unknown)
+                    }
+                    val senderDisplayName = if (senderBrand == getString(R.string.unknown)) senderName else "$senderName ($senderBrand)"
                     Log.d("PROTOCOL_PROBE:WS_FRAME", "Sender Info: $senderDisplayName")
 
                     updateStage(localTaskId, senderDisplayName, LiveStage.HANDSHAKE)
@@ -475,13 +493,16 @@ class P2pReceiverService : BaseP2pService() {
 
                         val progress = ProgressCounter(totalSize) { total, processed ->
                             val percent = (100.0 * processed / total).toInt()
-                            updateStage(localTaskId, senderDisplayName, LiveStage.TRANSFERRING, percent)
+                            updateStage(localTaskId, senderDisplayName, LiveStage.TRANSFERRING, percent, currentFileName)
                         }
 
                         updateStage(localTaskId, senderDisplayName, LiveStage.FINALIZING)
 
                         ZipInputStream(ist).use { zipStream ->
-                            saveArchive(zipStream, progress)
+                            saveArchive(zipStream, progress) { name ->
+                                currentFileName = name
+                                updateStage(localTaskId, senderDisplayName, LiveStage.TRANSFERRING, 0, name)
+                            }
                         }
                     }
 
@@ -570,9 +591,32 @@ class P2pReceiverService : BaseP2pService() {
         }
     }
 
+    private fun getCustomDownloadDir(): DocumentFile? {
+        val settings = AppSettings(this)
+        val uriStr = settings.downloadUri ?: return null
+        val uri = Uri.parse(uriStr)
+
+        val hasPermission = contentResolver.persistedUriPermissions.any {
+            it.uri.toString() == uri.toString() && it.isWritePermission
+        }
+        if (!hasPermission) {
+            Log.w(TAG, "No persisted permission for $uri")
+            return null
+        }
+
+        return try {
+            val df = DocumentFile.fromTreeUri(this, uri)
+            if (df?.exists() == true && df.isDirectory) df else null
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to resolve custom download dir", e)
+            null
+        }
+    }
+
     private fun saveArchive(
         zipStream: ZipInputStream,
-        progress: ProgressCounter
+        progress: ProgressCounter,
+        onFileStart: (String) -> Unit
     ): List<ReceivedFile> {
         val receivedFiles = mutableListOf<ReceivedFile>()
         var processedSize = 0L
@@ -581,11 +625,7 @@ class P2pReceiverService : BaseP2pService() {
             dalvik.system.ZipPathValidator.setCallback(ZipPathValidatorCallback)
         }
 
-        val settings = AppSettings(this)
-        val customUriStr = settings.downloadUri
-        val customDir = if (customUriStr != null) {
-            DocumentFile.fromTreeUri(this, Uri.parse(customUriStr))
-        } else null
+        val customDir = getCustomDownloadDir()
 
         while (true) {
             val entry = zipStream.nextEntry ?: break
@@ -594,11 +634,12 @@ class P2pReceiverService : BaseP2pService() {
             }
 
             Log.d(TAG, "Entry ${entry.name}")
+            onFileStart(entry.name)
 
             val entryFile = File(entry.name)
             
             try {
-                val (uri, mimeType) = if (customDir != null && customDir.exists()) {
+                val (uri, mimeType) = if (customDir != null) {
                     val extension = entryFile.extension
                     val mime = if (extension.isNotEmpty()) {
                         MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) ?: "application/octet-stream"
