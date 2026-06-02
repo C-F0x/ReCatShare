@@ -23,7 +23,6 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.provider.MediaStore
-import android.text.format.Formatter
 import android.util.Log
 import android.webkit.MimeTypeMap
 import android.widget.Toast
@@ -62,11 +61,11 @@ import moe.reimu.catshare.MyApplication
 import moe.reimu.catshare.R
 import moe.reimu.catshare.exceptions.CancelledByUserException
 import moe.reimu.catshare.exceptions.ExceptionWithMessage
+import moe.reimu.catshare.models.LiveUpdatePriority
+import moe.reimu.catshare.models.LiveUpdateState
 import moe.reimu.catshare.models.P2pInfo
 import moe.reimu.catshare.models.ReceivedFile
 import moe.reimu.catshare.models.WebSocketMessage
-import moe.reimu.catshare.models.LiveUpdatePriority
-import moe.reimu.catshare.models.LiveUpdateState
 import moe.reimu.catshare.utils.DeviceUtils
 import moe.reimu.catshare.utils.LiveStage
 import moe.reimu.catshare.utils.LiveUpdateCoordinator
@@ -129,11 +128,11 @@ class P2pReceiverService : BaseP2pService() {
 
         val shortText = when (stage) {
             LiveStage.TRANSFERRING -> "$progress%"
-            LiveStage.INIT, LiveStage.PREPARING -> "Prep..."
-            LiveStage.HANDSHAKE -> "Conn..."
-            LiveStage.REQUESTED, LiveStage.WAITING_AUTH -> "Wait..."
-            LiveStage.FINALIZING -> "Fin..."
-            LiveStage.COMPLETED -> "Done"
+            LiveStage.INIT, LiveStage.PREPARING -> getString(R.string.stage_prep)
+            LiveStage.HANDSHAKE -> getString(R.string.stage_conn)
+            LiveStage.REQUESTED, LiveStage.WAITING_AUTH -> getString(R.string.stage_wait)
+            LiveStage.FINALIZING -> getString(R.string.stage_fin)
+            LiveStage.COMPLETED -> getString(R.string.stage_done)
         }
 
         val state = LiveUpdateState(
@@ -254,9 +253,9 @@ class P2pReceiverService : BaseP2pService() {
         val localTaskId = Random.nextInt()
         val job = scope.launch(Dispatchers.IO) {
             try {
-                updateStage(localTaskId, "Device", LiveStage.INIT)
+                updateStage(localTaskId, getString(R.string.device), LiveStage.INIT)
                 runReceive(info, localTaskId)
-                updateStage(localTaskId, "CatShare", LiveStage.COMPLETED)
+                updateStage(localTaskId, "ReCatShare", LiveStage.COMPLETED)
                 delay(5000)
             } catch (e: CancelledByUserException) {
                 Log.i(TAG, "Cancelled by user")
@@ -381,7 +380,7 @@ class P2pReceiverService : BaseP2pService() {
 
     @SuppressLint("MissingPermission")
     private suspend fun runReceive(p2pInfo: P2pInfo, localTaskId: Int) = coroutineScope {
-        updateStage(localTaskId, "Device", LiveStage.PREPARING)
+        updateStage(localTaskId, getString(R.string.device), LiveStage.PREPARING)
         val client = HttpClient(OkHttp) {
             install(WebSockets)
             engine {
@@ -477,7 +476,7 @@ class P2pReceiverService : BaseP2pService() {
                     }
                     if (textContent != null) {
                         val cm = getSystemService(ClipboardManager::class.java)
-                        cm.setPrimaryClip(ClipData.newPlainText("Shared Text", textContent))
+                        cm.setPrimaryClip(ClipData.newPlainText(getString(R.string.shared_text), textContent))
 
                         showTextCopiedToast()
 

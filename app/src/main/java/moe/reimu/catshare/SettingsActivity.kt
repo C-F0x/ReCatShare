@@ -154,7 +154,7 @@ fun SettingsActivityContent() {
 
                     activity?.finish()
                 }) {
-                    Icon(imageVector = Icons.Outlined.Check, contentDescription = "Save")
+                    Icon(imageVector = Icons.Outlined.Check, contentDescription = stringResource(R.string.save))
                 }
             })
     }) { innerPadding ->
@@ -352,7 +352,7 @@ fun SettingsActivityContent() {
 
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = "Overwrite with custom BrandID",
+                                text = stringResource(R.string.overwrite_brand_id),
                                 style = MaterialTheme.typography.bodyMedium,
                                 modifier = Modifier.weight(1f)
                             )
@@ -366,7 +366,7 @@ fun SettingsActivityContent() {
                             OutlinedTextField(
                                 value = customBrandIdValue,
                                 onValueChange = { customBrandIdValue = it.filter { c -> c.isDigit() } },
-                                label = { Text("Custom Brand ID") },
+                                label = { Text(stringResource(R.string.custom_brand_id)) },
                                 modifier = Modifier.fillMaxWidth(),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                             )
@@ -441,7 +441,7 @@ fun SettingsActivityContent() {
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = "DEV Options",
+                                    text = stringResource(R.string.dev_options),
                                     style = MaterialTheme.typography.titleMedium,
                                     modifier = Modifier.weight(1f),
                                     color = MaterialTheme.colorScheme.primary
@@ -462,7 +462,7 @@ fun SettingsActivityContent() {
                                 ) {
                                     // Other dev options could go here
                                     Text(
-                                        text = "No other dev options available",
+                                        text = stringResource(R.string.no_dev_options),
                                         style = MaterialTheme.typography.bodySmall
                                     )
                                 }
@@ -498,7 +498,7 @@ fun AboutBanner(isDevMode: Boolean, onDevModeEnabled: () -> Unit) {
                 }
             )
             Text(
-                text = "Builder & Developer",
+                text = stringResource(R.string.builder_developer),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -512,9 +512,9 @@ fun AboutBanner(isDevMode: Boolean, onDevModeEnabled: () -> Unit) {
                             clickCount++
                             if (clickCount >= 7) {
                                 onDevModeEnabled()
-                                Toast.makeText(context, "You are now a developer!", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, R.string.dev_mode_toast, Toast.LENGTH_SHORT).show()
                             } else if (clickCount > 3) {
-                                Toast.makeText(context, "You are now ${7 - clickCount} steps away from being a developer.", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, context.getString(R.string.dev_mode_steps, 7 - clickCount), Toast.LENGTH_SHORT).show()
                             }
                         }
                     }

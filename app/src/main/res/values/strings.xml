@@ -93,4 +93,24 @@
     <string name="download_path">Download Path</string>
     <string name="choose_download_path">Choose Download Path</string>
     <string name="default_path">Default (Downloads/ReCatShare)</string>
+    <string name="save">Save</string>
+    <string name="permission_not_granted">%s not granted</string>
+    <string name="overwrite_brand_id">Overwrite with custom BrandID</string>
+    <string name="custom_brand_id">Custom Brand ID</string>
+    <string name="dev_options">DEV Options</string>
+    <string name="no_dev_options">No other dev options available</string>
+    <string name="builder_developer">Builder &amp; Developer</string>
+    <string name="dev_mode_toast">You are now a developer!</string>
+    <string name="dev_mode_steps">You are now %d steps away from being a developer.</string>
+    <string name="stage_prep">Prep…</string>
+    <string name="stage_conn">Conn…</string>
+    <string name="stage_wait">Wait…</string>
+    <string name="stage_fin">Fin…</string>
+    <string name="stage_done">Done</string>
+    <string name="shared_text">Shared Text</string>
+    <string name="device">Device</string>
+    <string name="noti_chan_receiver_persistent">Receiver persistent notification</string>
+    <string name="noti_chan_sending">Sending files</string>
+    <string name="noti_chan_receiving">Receiving files</string>
+    <string name="noti_chan_other">Other notifications</string>
 </resources>

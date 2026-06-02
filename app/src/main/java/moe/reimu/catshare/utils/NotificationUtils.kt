@@ -43,19 +43,19 @@ object NotificationUtils {
             NotificationChannelCompat.Builder(
                 RECEIVER_FG_CHAN_ID,
                 NotificationManagerCompat.IMPORTANCE_HIGH
-            ).setName("Receiver persistent notification").build(),
+            ).setName(context.getString(R.string.noti_chan_receiver_persistent)).build(),
             NotificationChannelCompat.Builder(
                 SENDER_CHAN_ID,
                 NotificationManagerCompat.IMPORTANCE_HIGH
-            ).setName("Sending files").build(),
+            ).setName(context.getString(R.string.noti_chan_sending)).build(),
             NotificationChannelCompat.Builder(
                 RECEIVER_CHAN_ID,
                 NotificationManagerCompat.IMPORTANCE_HIGH
-            ).setName("Receiving files").build(),
+            ).setName(context.getString(R.string.noti_chan_receiving)).build(),
             NotificationChannelCompat.Builder(
                 OTHER_CHAN_ID,
                 NotificationManagerCompat.IMPORTANCE_DEFAULT
-            ).setName("Other notifications").build(),
+            ).setName(context.getString(R.string.noti_chan_other)).build(),
         )
 
         manager.createNotificationChannelsCompat(channels)

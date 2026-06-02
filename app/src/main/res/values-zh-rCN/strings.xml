@@ -90,4 +90,24 @@
     <string name="download_path">下载路径</string>
     <string name="choose_download_path">选择下载目录</string>
     <string name="default_path">默认 (Downloads/ReCatShare)</string>
+    <string name="save">保存</string>
+    <string name="permission_not_granted">未授予 %s 权限</string>
+    <string name="overwrite_brand_id">使用自定义品牌 ID</string>
+    <string name="custom_brand_id">自定义品牌 ID</string>
+    <string name="dev_options">开发人员选项</string>
+    <string name="no_dev_options">无其他可用开发人员选项</string>
+    <string name="builder_developer">构建者 &amp; 开发人员</string>
+    <string name="dev_mode_toast">您现在处于开发人员模式！</string>
+    <string name="dev_mode_steps">您距离成为开发人员还有 %d 步。</string>
+    <string name="stage_prep">准备中…</string>
+    <string name="stage_conn">连接中…</string>
+    <string name="stage_wait">等待中…</string>
+    <string name="stage_fin">收尾中…</string>
+    <string name="stage_done">已完成</string>
+    <string name="shared_text">分享文本</string>
+    <string name="device">设备</string>
+    <string name="noti_chan_receiver_persistent">接收器常驻通知</string>
+    <string name="noti_chan_sending">正在发送文件</string>
+    <string name="noti_chan_receiving">正在接收文件</string>
+    <string name="noti_chan_other">其他通知</string>
 </resources>

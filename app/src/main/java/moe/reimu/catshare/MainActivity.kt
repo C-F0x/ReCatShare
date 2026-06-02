@@ -139,7 +139,7 @@ class MainActivity : AppCompatActivity() {
                 continue
             }
 
-            Toast.makeText(this, "$name not granted", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, getString(R.string.permission_not_granted, name), Toast.LENGTH_LONG).show()
             finish()
 
             return

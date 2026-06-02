@@ -125,11 +125,11 @@ class P2pSenderService : BaseP2pService() {
 
         val shortText = when (stage) {
             LiveStage.TRANSFERRING -> "$progress%"
-            LiveStage.INIT, LiveStage.PREPARING -> "Prep..."
-            LiveStage.HANDSHAKE -> "Conn..."
-            LiveStage.REQUESTED, LiveStage.WAITING_AUTH -> "Wait..."
-            LiveStage.FINALIZING -> "Fin..."
-            LiveStage.COMPLETED -> "Done"
+            LiveStage.INIT, LiveStage.PREPARING -> getString(R.string.stage_prep)
+            LiveStage.HANDSHAKE -> getString(R.string.stage_conn)
+            LiveStage.REQUESTED, LiveStage.WAITING_AUTH -> getString(R.string.stage_wait)
+            LiveStage.FINALIZING -> getString(R.string.stage_fin)
+            LiveStage.COMPLETED -> getString(R.string.stage_done)
         }
 
         val state = LiveUpdateState(
